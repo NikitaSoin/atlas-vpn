@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sameCode } from "@/lib/admin";
 import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
 import { X509Certificate } from "node:crypto";
-import { getPanel, usingMockPanel } from "@/lib/panel";
+import { usingMockPanel } from "@/lib/panel";
 import { mailConfigured } from "@/lib/mail";
 import { telegramConfigured } from "@/lib/telegram";
 import { siteUrl } from "@/lib/site";
@@ -49,6 +49,28 @@ function maskedDbUrl() {
   return { set: true, length: raw.length, masked, suspicious };
 }
 
+/** Реальный запрос к панели с таймаутом — getSubscription ошибки глотает. */
+async function panelProbe() {
+  const mode = usingMockPanel ? "mock" : "remnawave";
+  if (usingMockPanel) return { ok: true, mode };
+  const base = (process.env.PANEL_URL ?? "").replace(/\/$/, "");
+  const t0 = Date.now();
+  try {
+    const res = await fetch(`${base}/api/users?size=1&start=0`, {
+      headers: {
+        Authorization: `Bearer ${process.env.PANEL_TOKEN}`,
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-For": "127.0.0.1",
+      },
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+    return { ok: res.ok, mode, status: res.status, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, mode, error: (e as Error).message, ms: Date.now() - t0 };
+  }
+}
+
 function smtpTarget(): { host: string; port: number } | null {
   const url = process.env.SMTP_URL;
   if (!url || url === "log") return null;
@@ -74,10 +96,7 @@ export async function GET(req: NextRequest) {
     .listSubs(1)
     .then((rows) => ({ ok: true, mode: usingMemoryStore ? "memory" : "postgres", sample: rows.length }))
     .catch((e: Error) => ({ ok: false, mode: usingMemoryStore ? "memory" : "postgres", error: e.message }));
-  const panel = await getPanel()
-    .getSubscription("diag-nonexistent")
-    .then(() => ({ ok: true, mode: usingMockPanel ? "mock" : "remnawave" }))
-    .catch((e: Error) => ({ ok: false, mode: usingMockPanel ? "mock" : "remnawave", error: e.message }));
+  const panel = await panelProbe();
   const smtp = smtpTarget();
   const smtpPort = smtp ? { ...smtp, ...(await probe(smtp.host, smtp.port)) } : null;
   return NextResponse.json({

@@ -30,6 +30,12 @@ export default async function VerifyPage({
         {err === "code" && (
           <p className="text-sm text-bad">Код не подошёл или устарел. Запросите новый.</p>
         )}
+        {err === "server" && (
+          <p className="text-sm text-bad">
+            Код верный, но не удалось создать доступ: временно недоступен VPN-сервер.
+            Попробуйте через пару минут — запросите новый код.
+          </p>
+        )}
         <label className="block">
           <span className="text-sm text-muted">Код</span>
           <input

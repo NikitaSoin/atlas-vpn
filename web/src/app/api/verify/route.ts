@@ -25,7 +25,14 @@ export async function POST(req: NextRequest) {
   let sub = await store.findSubByEmail(email);
   let isNew = false;
   if (!sub) {
-    sub = await startTrial(email);
+    try {
+      sub = await startTrial(email);
+    } catch (e) {
+      // Чаще всего — недоступна VPN-панель. Код уже погашен, просим новый.
+      console.error("[verify] startTrial:", (e as Error).message);
+      await track(req.headers, "trial_failed");
+      return NextResponse.redirect(absoluteUrl(req, `${back}&err=server`), { status: 303 });
+    }
     isNew = true;
     await track(req.headers, "trial_started");
     notify(sub, "trial").catch(() => {});
