@@ -130,7 +130,7 @@ SUBSCRIPTION_HOST=https://sub.example.com
 | Переменная | Зачем |
 |---|---|
 | `DATABASE_URL`, `DATABASE_SSL_CA` | PostgreSQL Timeweb и её корневой сертификат (PEM) |
-| `PANEL_URL`, `PANEL_TOKEN`, `PANEL_SQUAD_UUID` | панель Remnawave; без них — мок |
+| `PANEL_URL`, `PANEL_TOKEN`, `PANEL_SQUAD_UUID` | панель Remnawave (`PANEL_URL` — только HTTPS-адрес через Caddy, см. ниже); без них — мок |
 | `SUBSCRIPTION_HOST` | домен подписочных ссылок |
 | `SITE_URL` | публичный адрес сайта — для ссылок в письмах и боте |
 | `ADMIN_CODE` | вход в `/admin` и ключ для `/api/cron` |
@@ -139,6 +139,18 @@ SUBSCRIPTION_HOST=https://sub.example.com
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` | бот уведомлений |
 | `SMTP_URL`, `MAIL_FROM` | почта: `smtps://user:pass@host:465`; `SMTP_URL=log` печатает письма в консоль (разработка) |
 | `REMINDERS_DISABLED=1` | выключить планировщик напоминаний (для тестов) |
+
+### Панель за HTTPS (Caddy на сервере панели)
+
+Панель Remnawave пускает API-запросы только с заголовками `X-Forwarded-Proto:
+https` и `X-Forwarded-For`. Исходящий прокси Timeweb переписывает
+`X-Forwarded-Proto` на `http`, если сайт ходит в панель по обычному HTTP, —
+панель рвёт соединение, создание аккаунта падает. Поэтому на сервере панели
+стоит Caddy: `https://95-182-85-234.sslip.io:8443` → `127.0.0.1:3000`,
+сертификат Let's Encrypt (HTTP-01 через :80; :443 занят Xray Reality).
+`PANEL_URL` указывает на этот адрес. Дашборд панели по нему открывается в
+браузере. Конфиг — `/etc/caddy/Caddyfile` на сервере. Когда появится домен,
+заменить `sslip.io`-имя на свой поддомен панели.
 
 ### Почему Telegram через Bot API, а не через переданный воркер
 
