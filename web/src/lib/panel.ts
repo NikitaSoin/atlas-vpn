@@ -31,9 +31,10 @@ export interface Panel {
 const SUBSCRIPTION_HOST =
   process.env.SUBSCRIPTION_HOST ?? "https://sub.example.com";
 
-function buildUrl(token: string): string {
+export function buildSubscriptionUrl(token: string): string {
   return `${SUBSCRIPTION_HOST.replace(/\/$/, "")}/sub/${token}`;
 }
+const buildUrl = buildSubscriptionUrl;
 
 function addMonths(from: Date, months: number): Date {
   const d = new Date(from);

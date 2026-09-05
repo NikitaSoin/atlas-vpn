@@ -11,7 +11,8 @@ export type Plan = {
   popular?: boolean;
 };
 
-const MONTHLY = 199;
+// Один план, три срока. Цены зафиксированы продуктовым решением 05.09.2026.
+const MONTHLY = 250;
 
 function makePlan(
   id: string,
@@ -35,8 +36,8 @@ function makePlan(
 
 export const plans: Plan[] = [
   makePlan("m1", 1, "1 месяц", MONTHLY),
-  makePlan("m6", 6, "6 месяцев", 999, true),
-  makePlan("m12", 12, "12 месяцев", 1699),
+  makePlan("m6", 6, "6 месяцев", 1350, true),
+  makePlan("m12", 12, "12 месяцев", 2400),
 ];
 
 export function findPlan(id: string): Plan | undefined {
@@ -44,3 +45,5 @@ export function findPlan(id: string): Plan | undefined {
 }
 
 export const TRIAL_DAYS = 3;
+/** Грейс-период после окончания подписки, часов. */
+export const GRACE_HOURS = 24;

@@ -5,16 +5,16 @@ import { findPlan, plans } from "@/lib/plans";
 export default async function CheckoutPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string }>;
+  searchParams: Promise<{ plan?: string; email?: string }>;
 }) {
-  const { plan: planId } = await searchParams;
+  const { plan: planId, email } = await searchParams;
   const plan = findPlan(planId ?? "") ?? plans.find((p) => p.popular);
   if (!plan) notFound();
 
   return (
     <main className="mx-auto max-w-md px-5 py-16">
       <Link href="/#tarify" className="text-sm text-muted hover:text-fg">
-        ← Другой тариф
+        ← Другой срок
       </Link>
 
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">Оплата</h1>
@@ -25,7 +25,7 @@ export default async function CheckoutPage({
           <span className="text-2xl font-semibold">{plan.price} ₽</span>
         </div>
         <p className="mt-1 text-sm text-muted">
-          {plan.perMonth} ₽ в месяц · до 3 устройств
+          {plan.perMonth} ₽ в месяц · 1 устройство
         </p>
 
         <form action="/api/checkout" method="POST" className="mt-6 space-y-4">
@@ -36,9 +36,22 @@ export default async function CheckoutPage({
               type="email"
               name="email"
               required
+              defaultValue={email ?? ""}
               placeholder="you@example.com"
               className="mt-1.5 w-full rounded-xl border border-line bg-ink px-4 py-2.5 outline-none placeholder:text-muted/60 focus:border-accent"
             />
+          </label>
+          <label className="flex items-start gap-2.5 text-sm text-muted">
+            <input
+              type="checkbox"
+              name="autoRenew"
+              defaultChecked
+              className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
+            />
+            <span>
+              Автопродление — доступ не прервётся, отключить можно в любой
+              момент
+            </span>
           </label>
           <button
             type="submit"
@@ -49,8 +62,8 @@ export default async function CheckoutPage({
         </form>
 
         <p className="mt-4 text-center text-xs text-muted">
-          Платёжный провайдер ещё не подключён — сейчас кнопка сразу выдаёт
-          доступ, чтобы можно было пройти сценарий целиком.
+          Если вы уже платили с этим email — подписка просто продлится, заново
+          настраивать ничего не придётся.
         </p>
       </div>
     </main>

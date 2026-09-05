@@ -1,0 +1,13 @@
+{
+  "name": "atlas-vpn",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "prepare": "npm --prefix web install",
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web start"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

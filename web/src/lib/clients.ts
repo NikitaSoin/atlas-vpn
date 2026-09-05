@@ -28,31 +28,32 @@ const label = encodeURIComponent(brand.nameLatin);
 export const clientsByPlatform: Record<Platform, VpnClient[]> = {
   ios: [
     {
+      // Основной клиент по продуктовому решению 05.09.2026. Живой (v2.5.5,
+      // август 2026) и есть в российском App Store — смена региона не нужна.
+      // Deep-link схема пока не подтверждена — импорт через копирование ссылки.
+      id: "incy",
+      name: "INCY",
+      note: "Бесплатный, есть в российском App Store — регион менять не нужно. После установки вставьте ссылку из блока ниже.",
+      installUrl: "https://apps.apple.com/ru/app/incy/id6756943388",
+      installLabel: "Установить из App Store",
+      recommended: true,
+    },
+    {
       id: "streisand",
       name: "Streisand",
-      note: "Бесплатный, простой интерфейс. Оптимален для большинства.",
+      note: "Бесплатный запасной вариант с импортом в один тап.",
       installUrl: "https://apps.apple.com/app/streisand/id6450534064",
       installLabel: "Установить из App Store",
       deepLink: (url) => `streisand://import/${url}`,
-      recommended: true,
     },
     {
       id: "v2box",
       name: "V2Box",
-      note: "Бесплатный. Запасной вариант, если Streisand недоступен.",
+      note: "Бесплатный. Ещё один запасной вариант.",
       installUrl: "https://apps.apple.com/app/v2box-v2ray-client/id6446814690",
       installLabel: "Установить из App Store",
       deepLink: (url) =>
         `v2box://install-sub?url=${encodeURIComponent(url)}&name=${label}`,
-    },
-    {
-      id: "shadowrocket",
-      name: "Shadowrocket",
-      note: "Платный, ~$3 разово. Самый функциональный, для опытных.",
-      installUrl: "https://apps.apple.com/app/shadowrocket/id932747118",
-      installLabel: "Купить в App Store",
-      deepLink: (url) =>
-        `shadowrocket://add/sub://${Buffer.from(url).toString("base64")}`,
     },
   ],
   android: [
@@ -67,13 +68,13 @@ export const clientsByPlatform: Record<Platform, VpnClient[]> = {
       recommended: true,
     },
     {
-      id: "karing",
-      name: "Karing",
+      id: "happ",
+      name: "Happ",
       note: "Бесплатный, есть в Google Play. Удобнее интерфейс.",
       installUrl:
-        "https://play.google.com/store/apps/details?id=com.karing.app",
+        "https://play.google.com/store/apps/details?id=com.happproxy",
       installLabel: "Установить из Google Play",
-      deepLink: (url) => `karing://install-config?url=${encodeURIComponent(url)}`,
+      deepLink: (url) => `happ://add/${url}`,
     },
   ],
   windows: [

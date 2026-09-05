@@ -29,14 +29,9 @@ export default function RootLayout({
               <Link href="/#faq" className="hover:text-fg">
                 Вопросы
               </Link>
-              <a
-                href={brand.supportTelegram}
-                className="hover:text-fg"
-                target="_blank"
-                rel="noreferrer"
-              >
+              <Link href="/support" className="hover:text-fg">
                 Поддержка
-              </a>
+              </Link>
             </nav>
           </div>
         </header>
