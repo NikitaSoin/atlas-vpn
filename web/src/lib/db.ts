@@ -19,6 +19,12 @@ export type SubRecord = {
   createdAt: Date;
   /** Пробный период без оплаты. После первой оплаты становится false. */
   isTrial: boolean;
+  /**
+   * Идентификатор пользователя в VPN-панели (shortUuid). null — доступ ещё
+   * не заведён: панель была недоступна при регистрации, планировщик
+   * повторяет попытку. Аккаунт на сайте существует независимо от панели.
+   */
+  panelToken: string | null;
   /** chat_id пользователя в Telegram-боте, если привязал уведомления. */
   telegramChatId: string | null;
   /** Когда отправили «заканчивается через сутки» / «закончилась». */
@@ -66,6 +72,9 @@ export interface Store {
   /** Изменить срок/тариф/флаги. Токен и ссылка не меняются. */
   updateSub(token: string, patch: SubPatch): Promise<SubRecord | null>;
   setTelegram(token: string, chatId: string | null): Promise<void>;
+  setPanelToken(token: string, panelToken: string): Promise<void>;
+  /** Аккаунты, для которых доступ в панели ещё не заведён. */
+  listUnprovisioned(limit: number): Promise<SubRecord[]>;
   /** Последние подписки — для админки. */
   listSubs(limit: number): Promise<SubRecord[]>;
   /**
@@ -89,7 +98,12 @@ export interface Store {
 export type NewSub = Pick<
   SubRecord,
   "token" | "email" | "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial"
->;
+> & { panelToken?: string | null };
+
+/** Наш собственный токен аккаунта — хвост личной ссылки, не зависит от панели. */
+export function newAccountToken(): string {
+  return randomBytes(12).toString("hex");
+}
 
 function newCode(): string {
   // 6 цифр: 100000–999999.
@@ -118,6 +132,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 -- Миграции: таблица могла быть создана до появления этих колонок.
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS is_trial BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_token TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expiring TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expired TIMESTAMPTZ;
@@ -257,6 +272,7 @@ class PgStore implements Store {
       expiresAt: new Date(r.expires_at as string),
       createdAt: new Date(r.created_at as string),
       isTrial: Boolean(r.is_trial),
+      panelToken: (r.panel_token as string | null) ?? null,
       telegramChatId: (r.telegram_chat_id as string | null) ?? null,
       notifiedExpiring: r.notified_expiring ? new Date(r.notified_expiring as string) : null,
       notifiedExpired: r.notified_expired ? new Date(r.notified_expired as string) : null,
@@ -300,11 +316,23 @@ class PgStore implements Store {
 
   async createSub(rec: NewSub) {
     const { rows } = await this.q(
-      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [rec.token, rec.email, rec.planId, rec.months, rec.autoRenew, rec.expiresAt, rec.isTrial],
+      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial, panel_token)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [rec.token, rec.email, rec.planId, rec.months, rec.autoRenew, rec.expiresAt, rec.isTrial, rec.panelToken ?? null],
     );
     return this.rowToSub(rows[0]);
+  }
+
+  async setPanelToken(token: string, panelToken: string) {
+    await this.q("UPDATE subscriptions SET panel_token = $2 WHERE token = $1", [token, panelToken]);
+  }
+
+  async listUnprovisioned(limit: number) {
+    const { rows } = await this.q(
+      "SELECT * FROM subscriptions WHERE panel_token IS NULL ORDER BY created_at LIMIT $1",
+      [limit],
+    );
+    return rows.map((r) => this.rowToSub(r));
   }
 
   async updateSub(token: string, patch: SubPatch) {
@@ -488,6 +516,7 @@ class MemoryStore implements Store {
   async createSub(rec: NewSub) {
     const full: SubRecord = {
       ...rec,
+      panelToken: rec.panelToken ?? null,
       createdAt: new Date(),
       telegramChatId: null,
       notifiedExpiring: null,
@@ -505,6 +534,13 @@ class MemoryStore implements Store {
     }
     Object.assign(sub, patch);
     return sub;
+  }
+  async setPanelToken(token: string, panelToken: string) {
+    const sub = this.subs.find((s) => s.token === token);
+    if (sub) sub.panelToken = panelToken;
+  }
+  async listUnprovisioned(limit: number) {
+    return this.subs.filter((s) => !s.panelToken).slice(0, limit);
   }
   async setTelegram(token: string, chatId: string | null) {
     for (const s of this.subs) {

@@ -87,7 +87,7 @@ export default async function AccountPage({
           Одна и та же ссылка работает на всех ваших устройствах.
         </p>
         <div className="mt-6">
-          <SetupSection token={sub.token} />
+          <SetupSection sub={sub} />
         </div>
       </section>
 

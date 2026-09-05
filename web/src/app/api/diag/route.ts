@@ -7,6 +7,7 @@ import { mailConfigured } from "@/lib/mail";
 import { telegramConfigured } from "@/lib/telegram";
 import { siteUrl } from "@/lib/site";
 import { connect } from "node:net";
+import { lookup } from "node:dns/promises";
 
 /** Открыт ли исходящий TCP до хоста:порта (хостинг может резать 25/465/587). */
 function probe(host: string, port: number, ms = 5000): Promise<{ ok: boolean; error?: string }> {
@@ -71,6 +72,29 @@ async function panelProbe() {
   }
 }
 
+/** DNS и TCP до панели по отдельности — чтобы отличить «не резолвится» от «порт закрыт». */
+async function panelNetProbe() {
+  const base = process.env.PANEL_URL;
+  if (!base) return null;
+  try {
+    const u = new URL(base);
+    const port = Number(u.port || (u.protocol === "https:" ? 443 : 80));
+    const t0 = Date.now();
+    let dns: { ok: boolean; address?: string; error?: string; ms: number };
+    try {
+      const r = await lookup(u.hostname);
+      dns = { ok: true, address: r.address, ms: Date.now() - t0 };
+    } catch (e) {
+      dns = { ok: false, error: (e as Error).message, ms: Date.now() - t0 };
+    }
+    const t1 = Date.now();
+    const tcp = dns.ok ? { ...(await probe(dns.address!, port)), ms: Date.now() - t1 } : null;
+    return { host: u.hostname, port, dns, tcp };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
 function smtpTarget(): { host: string; port: number } | null {
   const url = process.env.SMTP_URL;
   if (!url || url === "log") return null;
@@ -97,11 +121,13 @@ export async function GET(req: NextRequest) {
     .then((rows) => ({ ok: true, mode: usingMemoryStore ? "memory" : "postgres", sample: rows.length }))
     .catch((e: Error) => ({ ok: false, mode: usingMemoryStore ? "memory" : "postgres", error: e.message }));
   const panel = await panelProbe();
+  const panelNet = await panelNetProbe();
   const smtp = smtpTarget();
   const smtpPort = smtp ? { ...smtp, ...(await probe(smtp.host, smtp.port)) } : null;
   return NextResponse.json({
     db,
     panel,
+    panelNet,
     mail: mailConfigured(),
     smtpPort,
     telegram: telegramConfigured(),

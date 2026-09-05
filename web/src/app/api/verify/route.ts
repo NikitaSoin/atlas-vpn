@@ -25,14 +25,8 @@ export async function POST(req: NextRequest) {
   let sub = await store.findSubByEmail(email);
   let isNew = false;
   if (!sub) {
-    try {
-      sub = await startTrial(email);
-    } catch (e) {
-      // Чаще всего — недоступна VPN-панель. Код уже погашен, просим новый.
-      console.error("[verify] startTrial:", (e as Error).message);
-      await track(req.headers, "trial_failed");
-      return NextResponse.redirect(absoluteUrl(req, `${back}&err=server`), { status: 303 });
-    }
+    // Панель регистрацию не блокирует: доступ доведётся планировщиком.
+    sub = await startTrial(email);
     isNew = true;
     await track(req.headers, "trial_started");
     notify(sub, "trial").catch(() => {});

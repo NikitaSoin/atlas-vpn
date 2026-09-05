@@ -85,7 +85,11 @@ export default async function SetupPage({
       )}
 
       <div className="mt-8">
-        <SetupSection token={token} />
+        {sub ? (
+          <SetupSection sub={sub} />
+        ) : (
+          <p className="text-sm text-bad">Ссылка не найдена. Войдите в кабинет — там та же инструкция.</p>
+        )}
       </div>
 
       {tgLink && (

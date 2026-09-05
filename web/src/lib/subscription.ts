@@ -1,5 +1,5 @@
 import { getPanel } from "./panel";
-import { getStore, type SubRecord } from "./db";
+import { getStore, newAccountToken, type SubRecord } from "./db";
 import {
   addDays,
   addMonths,
@@ -51,15 +51,42 @@ function panelExpiry(expiresAt: Date, isTrial: boolean): Date {
   return isTrial ? expiresAt : new Date(expiresAt.getTime() + GRACE_HOURS * 3600_000);
 }
 
+/**
+ * Завести доступ в панели для аккаунта, у которого его ещё нет. Ошибки не
+ * пробрасывает: аккаунт на сайте живёт независимо, попытка повторится
+ * (планировщик раз в 10 минут и каждое открытие кабинета).
+ */
+export async function provisionPanel(sub: SubRecord): Promise<SubRecord> {
+  if (sub.panelToken) return sub;
+  try {
+    const panelSub = await getPanel().createSubscription({
+      email: sub.email,
+      expiresAt: panelExpiry(sub.expiresAt, sub.isTrial),
+      trafficLimitBytes: sub.isTrial ? Math.round(TRIAL_TRAFFIC_GB * 1024 ** 3) : 0,
+    });
+    await getStore().setPanelToken(sub.token, panelSub.token);
+    return { ...sub, panelToken: panelSub.token };
+  } catch (e) {
+    console.error("[panel] provision failed for", sub.email, (e as Error).message);
+    return sub;
+  }
+}
+
+/** Проход планировщика: доделать доступы, которые не удалось завести сразу. */
+export async function provisionPending(): Promise<number> {
+  const pending = await getStore().listUnprovisioned(50);
+  let done = 0;
+  for (const sub of pending) {
+    if ((await provisionPanel(sub)).panelToken) done++;
+  }
+  return done;
+}
+
+/** Регистрация: аккаунт с пробным доступом. Панель — следом, не блокирует. */
 export async function startTrial(email: string): Promise<SubRecord> {
   const expiresAt = addDays(new Date(), TRIAL_DAYS);
-  const panelSub = await getPanel().createSubscription({
-    email,
-    expiresAt,
-    trafficLimitBytes: Math.round(TRIAL_TRAFFIC_GB * 1024 ** 3),
-  });
-  return getStore().createSub({
-    token: panelSub.token,
+  const sub = await getStore().createSub({
+    token: newAccountToken(),
     email,
     planId: "trial",
     months: 0,
@@ -67,6 +94,7 @@ export async function startTrial(email: string): Promise<SubRecord> {
     expiresAt,
     isTrial: true,
   });
+  return provisionPanel(sub);
 }
 
 /** Оплата: новая подписка или продление существующей (в т.ч. триала). */
@@ -83,27 +111,32 @@ export async function applyPayment(
   if (existing) {
     const base = existing.expiresAt > now ? existing.expiresAt : now;
     const expiresAt = addMonths(base, plan.months);
-    await panel.updateSubscription(existing.token, {
-      expiresAt: panelExpiry(expiresAt, false),
-      trafficLimitBytes: 0, // после оплаты лимит триала снимается
-    });
-    const updated = await store.updateSub(existing.token, {
-      planId: plan.id,
-      months: plan.months,
-      autoRenew,
-      expiresAt,
-      isTrial: false,
-    });
-    return updated ?? existing;
+    const updated =
+      (await store.updateSub(existing.token, {
+        planId: plan.id,
+        months: plan.months,
+        autoRenew,
+        expiresAt,
+        isTrial: false,
+      })) ?? existing;
+    if (existing.panelToken) {
+      try {
+        await panel.updateSubscription(existing.panelToken, {
+          expiresAt: panelExpiry(expiresAt, false),
+          trafficLimitBytes: 0, // после оплаты лимит триала снимается
+        });
+      } catch (e) {
+        // Срок в базе уже новый; панель догоним при следующей синхронизации.
+        console.error("[panel] extend failed for", email, (e as Error).message);
+      }
+      return updated;
+    }
+    return provisionPanel(updated);
   }
 
   const expiresAt = addMonths(now, plan.months);
-  const panelSub = await panel.createSubscription({
-    email,
-    expiresAt: panelExpiry(expiresAt, false),
-  });
-  return store.createSub({
-    token: panelSub.token,
+  const sub = await store.createSub({
+    token: newAccountToken(),
     email,
     planId: plan.id,
     months: plan.months,
@@ -111,6 +144,7 @@ export async function applyPayment(
     expiresAt,
     isTrial: false,
   });
+  return provisionPanel(sub);
 }
 
 export function formatDate(d: Date): string {

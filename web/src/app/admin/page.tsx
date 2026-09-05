@@ -127,7 +127,10 @@ export default async function AdminPage({
                 {subs.map((s) => (
                   <tr key={s.token} className="border-t border-line/60">
                     <td className="py-1.5">{s.email}</td>
-                    <td className="py-1.5">{stateLabel[subState(s)].split(" — ")[0]}</td>
+                    <td className="py-1.5">
+                      {stateLabel[subState(s)].split(" — ")[0]}
+                      {!s.panelToken && <span className="ml-1 text-amber-700">· без доступа в панели</span>}
+                    </td>
                     <td className="py-1.5">{formatDate(s.expiresAt)}</td>
                     <td className="py-1.5">{s.telegramChatId ? "✓" : ""}</td>
                   </tr>
