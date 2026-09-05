@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix web ci && npm --prefix web run build",
-    "start": "npm --prefix web start"
+    "start": "node index.js"
   },
   "engines": {
     "node": ">=20"
