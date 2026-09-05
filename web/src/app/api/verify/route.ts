@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { absoluteUrl } from "@/lib/site";
 import { getStore } from "@/lib/db";
 import { setSession } from "@/lib/session";
 import { startTrial } from "@/lib/subscription";
@@ -13,12 +14,12 @@ export async function POST(req: NextRequest) {
   const back = `/start/verify?email=${encodeURIComponent(email)}`;
 
   if (!email.includes("@") || code.length !== 6) {
-    return NextResponse.redirect(new URL(`${back}&err=code`, req.url), { status: 303 });
+    return NextResponse.redirect(absoluteUrl(req, `${back}&err=code`), { status: 303 });
   }
   const store = getStore();
   if (!(await store.consumeEmailCode(email, code))) {
     await track(req.headers, "code_wrong");
-    return NextResponse.redirect(new URL(`${back}&err=code`, req.url), { status: 303 });
+    return NextResponse.redirect(absoluteUrl(req, `${back}&err=code`), { status: 303 });
   }
 
   let sub = await store.findSubByEmail(email);
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     await track(req.headers, "login");
   }
 
-  const res = NextResponse.redirect(new URL(isNew ? "/account?new=1" : "/account", req.url), {
+  const res = NextResponse.redirect(absoluteUrl(req, isNew ? "/account?new=1" : "/account"), {
     status: 303,
   });
   setSession(res, sub.token);

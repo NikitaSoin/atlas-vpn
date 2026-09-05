@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { absoluteUrl } from "@/lib/site";
 import { getStore } from "@/lib/db";
 import { track } from "@/lib/analytics";
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
     await store.addMessage(ticket.id, "user", message);
     // Ответ пользователя снова открывает закрытое обращение.
     if (ticket.status === "closed") await store.setTicketStatus(ticket.id, "open");
-    return NextResponse.redirect(new URL(`/support/t/${ticket.token}`, req.url), {
+    return NextResponse.redirect(absoluteUrl(req, `/support/t/${ticket.token}`), {
       status: 303,
     });
   }
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
   const ticket = await store.createTicket(email, message);
   await track(req.headers, "ticket_created");
-  return NextResponse.redirect(new URL(`/support/t/${ticket.token}`, req.url), {
+  return NextResponse.redirect(absoluteUrl(req, `/support/t/${ticket.token}`), {
     status: 303,
   });
 }

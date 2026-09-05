@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { absoluteUrl } from "@/lib/site";
 import { ADMIN_COOKIE, isAdmin, sameCode } from "@/lib/admin";
 import { getStore } from "@/lib/db";
 
@@ -13,9 +14,9 @@ export async function POST(req: NextRequest) {
   if (action === "login") {
     const code = String(form.get("code") ?? "");
     if (!sameCode(code)) {
-      return NextResponse.redirect(new URL("/admin?err=1", req.url), { status: 303 });
+      return NextResponse.redirect(absoluteUrl(req, "/admin?err=1"), { status: 303 });
     }
-    const res = NextResponse.redirect(new URL("/admin", req.url), { status: 303 });
+    const res = NextResponse.redirect(absoluteUrl(req, "/admin"), { status: 303 });
     res.cookies.set(ADMIN_COOKIE, code, {
       httpOnly: true,
       sameSite: "lax",
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     await store.setTicketStatus(ticket.id, "open");
   }
 
-  return NextResponse.redirect(new URL(`/admin/t/${ticket.id}`, req.url), {
+  return NextResponse.redirect(absoluteUrl(req, `/admin/t/${ticket.id}`), {
     status: 303,
   });
 }

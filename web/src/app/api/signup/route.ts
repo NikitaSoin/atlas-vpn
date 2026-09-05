@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { absoluteUrl } from "@/lib/site";
 import { getStore } from "@/lib/db";
 import { mailConfigured, sendMail } from "@/lib/mail";
 import { brand } from "@/lib/brand";
@@ -15,10 +16,10 @@ export async function POST(req: NextRequest) {
   const form = await req.formData();
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   if (!email.includes("@") || email.length > 200) {
-    return NextResponse.redirect(new URL("/start?err=email", req.url), { status: 303 });
+    return NextResponse.redirect(absoluteUrl(req, "/start?err=email"), { status: 303 });
   }
   if (!mailConfigured()) {
-    return NextResponse.redirect(new URL("/start?err=nomail", req.url), { status: 303 });
+    return NextResponse.redirect(absoluteUrl(req, "/start?err=nomail"), { status: 303 });
   }
 
   const code = await getStore().createEmailCode(email, CODE_TTL_MIN);
@@ -30,10 +31,10 @@ export async function POST(req: NextRequest) {
   );
   await track(req.headers, sent ? "code_sent" : "code_send_failed");
   if (!sent) {
-    return NextResponse.redirect(new URL("/start?err=send", req.url), { status: 303 });
+    return NextResponse.redirect(absoluteUrl(req, "/start?err=send"), { status: 303 });
   }
   return NextResponse.redirect(
-    new URL(`/start/verify?email=${encodeURIComponent(email)}`, req.url),
+    absoluteUrl(req, `/start/verify?email=${encodeURIComponent(email)}`),
     { status: 303 },
   );
 }

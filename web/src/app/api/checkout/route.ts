@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { absoluteUrl } from "@/lib/site";
 import { findPlan } from "@/lib/plans";
 import { getStore } from "@/lib/db";
 import { setSession } from "@/lib/session";
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
   const sub = await applyPayment(email, plan, autoRenew);
   notify(sub, "paid").catch(() => {});
 
-  const res = NextResponse.redirect(new URL(`/setup/${sub.token}`, req.url), {
+  const res = NextResponse.redirect(absoluteUrl(req, `/setup/${sub.token}`), {
     status: 303,
   });
   setSession(res, sub.token);

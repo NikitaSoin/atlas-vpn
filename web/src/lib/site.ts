@@ -1,3 +1,19 @@
+import type { NextRequest } from "next/server";
+
+/**
+ * Абсолютный адрес для редиректа. За прокси хостинга `req.url` смотрит на
+ * внутренний адрес (localhost:порт), и редирект «на себя» уводит пользователя
+ * на localhost. Берём внешний хост из заголовков прокси, затем SITE_URL,
+ * и только потом — то, что видит сам сервер.
+ */
+export function absoluteUrl(req: NextRequest, path: string): URL {
+  const fwdHost = req.headers.get("x-forwarded-host")?.split(",")[0].trim();
+  const fwdProto = req.headers.get("x-forwarded-proto")?.split(",")[0].trim();
+  if (fwdHost) return new URL(path, `${fwdProto ?? "https"}://${fwdHost}`);
+  if (process.env.SITE_URL) return new URL(path, siteUrl());
+  return new URL(path, req.url);
+}
+
 /** Публичный адрес сайта — для ссылок в письмах и сообщениях бота. */
 export function siteUrl(): string {
   const raw = (process.env.SITE_URL ?? "http://localhost:3000").trim().replace(/\/$/, "");
