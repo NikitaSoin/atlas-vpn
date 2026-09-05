@@ -1,9 +1,11 @@
 import Link from "next/link";
 import QRCode from "qrcode";
 import { brand } from "@/lib/brand";
-import { GRACE_HOURS } from "@/lib/plans";
+import { plans } from "@/lib/plans";
 import { buildSubscriptionUrl, getPanel } from "@/lib/panel";
 import { getStore } from "@/lib/db";
+import { telegramLinkUrl } from "@/lib/telegram";
+import { formatDate, subState, timeLeft } from "@/lib/subscription";
 import SetupClient from "./setup-client";
 
 export default async function SetupPage({
@@ -25,22 +27,14 @@ export default async function SetupPage({
     width: 160,
   });
 
-  // Состояние подписки: активна / грейс-период (сутки) / закончилась.
-  const now = new Date();
-  const graceEnd = sub
-    ? new Date(sub.expiresAt.getTime() + GRACE_HOURS * 3600 * 1000)
-    : null;
-  const state = !sub
-    ? "unknown"
-    : now < sub.expiresAt
-      ? "active"
-      : graceEnd && now < graceEnd
-        ? "grace"
-        : "expired";
-
+  // Состояние подписки: триал / активна / грейс-период (сутки) / закончилась.
+  const state = sub ? subState(sub) : "unknown";
+  const left = sub ? timeLeft(sub) : null;
+  const renewPlanId = sub && !sub.isTrial ? sub.planId : (plans.find((p) => p.popular) ?? plans[0]).id;
   const renewHref = sub
-    ? `/checkout?plan=${sub.planId}&email=${encodeURIComponent(sub.email)}`
+    ? `/checkout?plan=${renewPlanId}&email=${encodeURIComponent(sub.email)}`
     : "/#tarify";
+  const tgLink = sub && !sub.telegramChatId ? telegramLinkUrl(sub.token) : null;
 
   return (
     <main className="mx-auto max-w-2xl px-5 py-16">
@@ -77,7 +71,9 @@ export default async function SetupPage({
       {state !== "expired" && state !== "grace" && (
         <span className="inline-flex items-center gap-2 rounded-full border border-good/40 bg-good/10 px-3 py-1 text-xs text-good">
           <span className="h-1.5 w-1.5 rounded-full bg-good" />
-          Доступ активен
+          {state === "trial" && left
+            ? `Пробный доступ · осталось ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`}`
+            : "Доступ активен"}
         </span>
       )}
 
@@ -88,21 +84,40 @@ export default async function SetupPage({
         Установите приложение и добавьте в него подписку — вручную ничего
         настраивать не нужно. Дальше внутри приложения включите переключатель.
       </p>
-      {sub && state === "active" && (
+      {sub && (state === "active" || state === "trial") && (
         <p className="mt-2 text-sm text-muted">
-          Доступ действует до{" "}
-          {sub.expiresAt.toLocaleDateString("ru-RU", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-          })}
-          {sub.autoRenew ? " · автопродление включено" : ""}.
+          {state === "trial" ? "Пробный доступ" : "Доступ"} действует до{" "}
+          {formatDate(sub.expiresAt)}
+          {sub.autoRenew ? " · автопродление включено" : ""}. Сохраните эту
+          страницу — она же доступна из{" "}
+          <Link href="/account" className="text-accent-ink hover:underline">
+            кабинета
+          </Link>
+          .
         </p>
       )}
 
       <div className="mt-8">
         <SetupClient subscriptionUrl={url} importLink={importLink} qrSvg={qrSvg} />
       </div>
+
+      {tgLink && (
+        <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
+          <h3 className="font-medium">Напомнить, когда доступ будет заканчиваться?</h3>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">
+            Подключите уведомления в Telegram — напишем за сутки до конца,
+            чтобы VPN не выключился неожиданно.
+          </p>
+          <a
+            href={tgLink}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-block rounded-xl border border-line px-4 py-2 text-sm transition hover:border-accent"
+          >
+            Уведомления в Telegram
+          </a>
+        </div>
+      )}
 
       <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
         <h3 className="font-medium">Что-то не получается?</h3>

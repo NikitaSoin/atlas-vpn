@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { adminConfigured, isAdmin } from "@/lib/admin";
 import { getStore } from "@/lib/db";
+import { formatDate, stateLabel, subState } from "@/lib/subscription";
 
 export const dynamic = "force-dynamic";
 
@@ -55,11 +56,17 @@ export default async function AdminPage({
   }
 
   const store = getStore();
-  const [tickets, stats7, stats1] = await Promise.all([
+  const [tickets, stats7, stats1, subs] = await Promise.all([
     store.listTickets(),
     store.eventStats(7),
     store.eventStats(1),
+    store.listSubs(100),
   ]);
+  const byState = new Map<string, number>();
+  for (const s of subs) {
+    const st = subState(s);
+    byState.set(st, (byState.get(st) ?? 0) + 1);
+  }
   const open = tickets.filter((t) => t.status === "open");
   const today = new Map(stats1.map((s) => [s.event, s.count]));
 
@@ -92,6 +99,42 @@ export default async function AdminPage({
               ))}
             </tbody>
           </table>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
+        <h2 className="font-medium">
+          Подписки{" "}
+          <span className="text-sm text-muted">
+            · пробных: {byState.get("trial") ?? 0} · платных: {byState.get("active") ?? 0} ·
+            истекших: {(byState.get("grace") ?? 0) + (byState.get("expired") ?? 0)}
+          </span>
+        </h2>
+        {subs.length === 0 ? (
+          <p className="mt-2 text-sm text-muted">Пока никого.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="mt-3 w-full text-sm">
+              <thead className="text-left text-muted">
+                <tr>
+                  <th className="py-1 font-normal">Email</th>
+                  <th className="py-1 font-normal">Статус</th>
+                  <th className="py-1 font-normal">До</th>
+                  <th className="py-1 font-normal">TG</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subs.map((s) => (
+                  <tr key={s.token} className="border-t border-line/60">
+                    <td className="py-1.5">{s.email}</td>
+                    <td className="py-1.5">{stateLabel[subState(s)].split(" — ")[0]}</td>
+                    <td className="py-1.5">{formatDate(s.expiresAt)}</td>
+                    <td className="py-1.5">{s.telegramChatId ? "✓" : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

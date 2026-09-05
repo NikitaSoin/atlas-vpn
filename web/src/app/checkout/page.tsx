@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { findPlan, plans } from "@/lib/plans";
+import { currentSub } from "@/lib/session";
 
 export default async function CheckoutPage({
   searchParams,
 }: {
   searchParams: Promise<{ plan?: string; email?: string }>;
 }) {
-  const { plan: planId, email } = await searchParams;
+  const { plan: planId, email: emailParam } = await searchParams;
   const plan = findPlan(planId ?? "") ?? plans.find((p) => p.popular);
   if (!plan) notFound();
+  // Email берём из кабинета, если человек уже подключался в этом браузере.
+  const sub = await currentSub();
+  const email = emailParam ?? sub?.email;
 
   return (
     <main className="mx-auto max-w-md px-5 py-16">
@@ -62,8 +66,8 @@ export default async function CheckoutPage({
         </form>
 
         <p className="mt-4 text-center text-xs text-muted">
-          Если вы уже платили с этим email — подписка просто продлится, заново
-          настраивать ничего не придётся.
+          Если с этим email уже есть доступ (в том числе пробный) — срок просто
+          прибавится к остатку, заново настраивать ничего не придётся.
         </p>
       </div>
     </main>

@@ -30,10 +30,25 @@ export type Subscription = {
   expiresAt: Date;
 };
 
+export type CreateInput = {
+  email: string;
+  /** Когда панель отключит доступ. Сайт сам считает грейс-период и триал. */
+  expiresAt: Date;
+  /** Лимит трафика в байтах, 0 — без лимита. Ненулевой только у триала. */
+  trafficLimitBytes?: number;
+};
+
+export type UpdateInput = {
+  expiresAt: Date;
+  /** Если задано — переписать лимит (0 снимает лимит после оплаты триала). */
+  trafficLimitBytes?: number;
+};
+
 export interface Panel {
-  createSubscription(input: { email: string; months: number }): Promise<Subscription>;
+  createSubscription(input: CreateInput): Promise<Subscription>;
   getSubscription(token: string): Promise<Subscription | null>;
-  extendSubscription(token: string, months: number): Promise<Subscription | null>;
+  /** Новый срок и (опционально) лимит. Сайт — источник правды по датам. */
+  updateSubscription(token: string, input: UpdateInput): Promise<Subscription | null>;
 }
 
 const SUBSCRIPTION_HOST =
@@ -41,12 +56,6 @@ const SUBSCRIPTION_HOST =
 
 export function buildSubscriptionUrl(token: string): string {
   return `${SUBSCRIPTION_HOST.replace(/\/$/, "")}/sub/${token}`;
-}
-
-function addMonths(from: Date, months: number): Date {
-  const d = new Date(from);
-  d.setMonth(d.getMonth() + months);
-  return d;
 }
 
 /** email → допустимый username панели: буквы, цифры, _ и -. */
@@ -60,13 +69,13 @@ function usernameFromEmail(email: string): string {
 class MockPanel implements Panel {
   private store = new Map<string, Subscription>();
 
-  async createSubscription({ months }: { email: string; months: number }) {
+  async createSubscription({ expiresAt }: CreateInput) {
     const token = randomUUID().replace(/-/g, "").slice(0, 16);
     const sub: Subscription = {
       userId: randomUUID(),
       token,
       url: buildSubscriptionUrl(token),
-      expiresAt: addMonths(new Date(), months),
+      expiresAt,
     };
     this.store.set(token, sub);
     return sub;
@@ -76,11 +85,10 @@ class MockPanel implements Panel {
     return this.store.get(token) ?? null;
   }
 
-  async extendSubscription(token: string, months: number) {
+  async updateSubscription(token: string, { expiresAt }: UpdateInput) {
     const sub = this.store.get(token);
     if (!sub) return null;
-    const base = sub.expiresAt > new Date() ? sub.expiresAt : new Date();
-    sub.expiresAt = addMonths(base, months);
+    sub.expiresAt = expiresAt;
     return sub;
   }
 }
@@ -157,15 +165,16 @@ class RemnawavePanel implements Panel {
     };
   }
 
-  async createSubscription({ email, months }: { email: string; months: number }) {
-    const expiresAt = addMonths(new Date(), months);
+  async createSubscription({ email, expiresAt, trafficLimitBytes = 0 }: CreateInput) {
     const created = await this.request<{ response: PanelUser }>("/api/users", {
       method: "POST",
       body: JSON.stringify({
         username: usernameFromEmail(email),
         status: "ACTIVE",
         expireAt: expiresAt.toISOString(),
-        trafficLimitBytes: 0,
+        trafficLimitBytes,
+        // Лимит триала считается один раз за весь срок, без сброса по дням.
+        trafficLimitStrategy: "NO_RESET",
         activeInternalSquads: [this.squadUuid],
         email,
       }),
@@ -184,17 +193,16 @@ class RemnawavePanel implements Panel {
     }
   }
 
-  async extendSubscription(token: string, months: number) {
+  async updateSubscription(token: string, { expiresAt, trafficLimitBytes }: UpdateInput) {
     const current = await this.getSubscription(token);
     if (!current) return null;
-    const base = current.expiresAt > new Date() ? current.expiresAt : new Date();
-    const expiresAt = addMonths(base, months);
     const updated = await this.request<{ response: PanelUser }>("/api/users", {
       method: "PATCH",
       body: JSON.stringify({
         id: Number(current.userId),
         status: "ACTIVE",
         expireAt: expiresAt.toISOString(),
+        ...(trafficLimitBytes !== undefined ? { trafficLimitBytes } : {}),
       }),
     });
     return this.toSubscription(updated.response);

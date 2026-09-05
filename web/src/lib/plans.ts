@@ -45,5 +45,21 @@ export function findPlan(id: string): Plan | undefined {
 }
 
 export const TRIAL_DAYS = 3;
-/** Грейс-период после окончания подписки, часов. */
+/**
+ * Лимит трафика на пробный период, ГБ. Продуктовое решение: «триал 3 дня,
+ * лимит трафика остаётся». Число можно переопределить переменной окружения
+ * TRIAL_TRAFFIC_GB без правки кода.
+ */
+export const TRIAL_TRAFFIC_GB = Number(process.env.TRIAL_TRAFFIC_GB ?? 10);
+/** Грейс-период после окончания платной подписки, часов. */
 export const GRACE_HOURS = 24;
+
+export function addMonths(from: Date, months: number): Date {
+  const d = new Date(from);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+export function addDays(from: Date, days: number): Date {
+  return new Date(from.getTime() + days * 86400_000);
+}

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 /**
  * Хранилище: подписки и обращения в поддержку.
@@ -17,7 +17,20 @@ export type SubRecord = {
   autoRenew: boolean;
   expiresAt: Date;
   createdAt: Date;
+  /** Пробный период без оплаты. После первой оплаты становится false. */
+  isTrial: boolean;
+  /** chat_id пользователя в Telegram-боте, если привязал уведомления. */
+  telegramChatId: string | null;
+  /** Когда отправили «заканчивается через сутки» / «закончилась». */
+  notifiedExpiring: Date | null;
+  notifiedExpired: Date | null;
 };
+
+export type SubPatch = Partial<
+  Pick<SubRecord, "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial">
+>;
+
+export type ReminderKind = "expiring" | "expired";
 
 export type TicketMessage = {
   author: "user" | "admin";
@@ -48,9 +61,23 @@ export interface Store {
   eventStats(days: number): Promise<{ event: string; count: number }[]>;
   findSubByEmail(email: string): Promise<SubRecord | null>;
   findSubByToken(token: string): Promise<SubRecord | null>;
-  createSub(rec: Omit<SubRecord, "createdAt">): Promise<SubRecord>;
-  /** Продление: та же подписка, тот же токен, срок прибавляется к остатку. */
-  extendSub(token: string, months: number, autoRenew: boolean): Promise<SubRecord | null>;
+  findSubByTelegram(chatId: string): Promise<SubRecord | null>;
+  createSub(rec: NewSub): Promise<SubRecord>;
+  /** Изменить срок/тариф/флаги. Токен и ссылка не меняются. */
+  updateSub(token: string, patch: SubPatch): Promise<SubRecord | null>;
+  setTelegram(token: string, chatId: string | null): Promise<void>;
+  /** Последние подписки — для админки. */
+  listSubs(limit: number): Promise<SubRecord[]>;
+  /**
+   * Кому пора напомнить: заканчивается в ближайшие `hours` часов и ещё не
+   * предупреждали, либо уже закончилась (не старше недели) и не сообщали.
+   */
+  listDueReminders(hours: number): Promise<{ sub: SubRecord; kind: ReminderKind }[]>;
+  markNotified(token: string, kind: ReminderKind): Promise<void>;
+  /** Одноразовая ссылка для входа в кабинет по email. Живёт `ttlMinutes`. */
+  createLoginToken(email: string, ttlMinutes: number): Promise<string>;
+  /** Возвращает email и гасит токен; null — если нет или просрочен. */
+  consumeLoginToken(token: string): Promise<string | null>;
   createTicket(email: string, body: string): Promise<Ticket>;
   getTicketByToken(token: string): Promise<Ticket | null>;
   getTicketById(id: number): Promise<Ticket | null>;
@@ -59,10 +86,21 @@ export interface Store {
   setTicketStatus(ticketId: number, status: "open" | "closed"): Promise<void>;
 }
 
-function addMonths(from: Date, months: number): Date {
-  const d = new Date(from);
-  d.setMonth(d.getMonth() + months);
-  return d;
+export type NewSub = Pick<
+  SubRecord,
+  "token" | "email" | "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial"
+>;
+
+function newToken(bytes = 24): string {
+  return randomBytes(bytes).toString("base64url");
+}
+
+/** Кому и какое напоминание пора слать — общая логика для обоих хранилищ. */
+function dueKind(sub: SubRecord, now: Date, hours: number): ReminderKind | null {
+  const ms = sub.expiresAt.getTime() - now.getTime();
+  if (ms > 0 && ms <= hours * 3600_000 && !sub.notifiedExpiring) return "expiring";
+  if (ms <= 0 && ms > -7 * 86400_000 && !sub.notifiedExpired) return "expired";
+  return null;
 }
 
 /* ------------------------------ PostgreSQL ------------------------------ */
@@ -76,6 +114,17 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   auto_renew  BOOLEAN NOT NULL DEFAULT FALSE,
   expires_at  TIMESTAMPTZ NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Миграции: таблица могла быть создана до появления этих колонок.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS is_trial BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expiring TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expired TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS subscriptions_expires_at ON subscriptions (expires_at);
+CREATE TABLE IF NOT EXISTS login_tokens (
+  token       TEXT PRIMARY KEY,
+  email       TEXT NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tickets (
   id          SERIAL PRIMARY KEY,
@@ -156,6 +205,10 @@ class PgStore implements Store {
       autoRenew: r.auto_renew as boolean,
       expiresAt: new Date(r.expires_at as string),
       createdAt: new Date(r.created_at as string),
+      isTrial: Boolean(r.is_trial),
+      telegramChatId: (r.telegram_chat_id as string | null) ?? null,
+      notifiedExpiring: r.notified_expiring ? new Date(r.notified_expiring as string) : null,
+      notifiedExpired: r.notified_expired ? new Date(r.notified_expired as string) : null,
     };
   }
 
@@ -186,25 +239,100 @@ class PgStore implements Store {
     return rows[0] ? this.rowToSub(rows[0]) : null;
   }
 
-  async createSub(rec: Omit<SubRecord, "createdAt">) {
+  async findSubByTelegram(chatId: string) {
     const { rows } = await this.q(
-      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [rec.token, rec.email, rec.planId, rec.months, rec.autoRenew, rec.expiresAt],
+      "SELECT * FROM subscriptions WHERE telegram_chat_id = $1",
+      [chatId],
+    );
+    return rows[0] ? this.rowToSub(rows[0]) : null;
+  }
+
+  async createSub(rec: NewSub) {
+    const { rows } = await this.q(
+      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [rec.token, rec.email, rec.planId, rec.months, rec.autoRenew, rec.expiresAt, rec.isTrial],
     );
     return this.rowToSub(rows[0]);
   }
 
-  async extendSub(token: string, months: number, autoRenew: boolean) {
+  async updateSub(token: string, patch: SubPatch) {
     const current = await this.findSubByToken(token);
     if (!current) return null;
-    const base = current.expiresAt > new Date() ? current.expiresAt : new Date();
-    const next = addMonths(base, months);
+    const next = { ...current, ...patch };
     const { rows } = await this.q(
-      "UPDATE subscriptions SET expires_at = $2, auto_renew = $3, months = $4 WHERE token = $1 RETURNING *",
-      [token, next, autoRenew, months],
+      `UPDATE subscriptions
+       SET plan_id = $2, months = $3, auto_renew = $4, expires_at = $5, is_trial = $6,
+           -- новый срок — новые напоминания
+           notified_expiring = CASE WHEN expires_at <> $5 THEN NULL ELSE notified_expiring END,
+           notified_expired  = CASE WHEN expires_at <> $5 THEN NULL ELSE notified_expired END
+       WHERE token = $1 RETURNING *`,
+      [token, next.planId, next.months, next.autoRenew, next.expiresAt, next.isTrial],
     );
     return this.rowToSub(rows[0]);
+  }
+
+  async setTelegram(token: string, chatId: string | null) {
+    // Один чат — одна подписка: отвязываем чат от прежней, если была.
+    if (chatId) {
+      await this.q(
+        "UPDATE subscriptions SET telegram_chat_id = NULL WHERE telegram_chat_id = $1 AND token <> $2",
+        [chatId, token],
+      );
+    }
+    await this.q("UPDATE subscriptions SET telegram_chat_id = $2 WHERE token = $1", [
+      token,
+      chatId,
+    ]);
+  }
+
+  async listSubs(limit: number) {
+    const { rows } = await this.q(
+      "SELECT * FROM subscriptions ORDER BY created_at DESC LIMIT $1",
+      [limit],
+    );
+    return rows.map((r) => this.rowToSub(r));
+  }
+
+  async listDueReminders(hours: number) {
+    const { rows } = await this.q(
+      `SELECT * FROM subscriptions
+       WHERE (expires_at > now() AND expires_at <= now() + ($1 || ' hours')::interval
+              AND notified_expiring IS NULL)
+          OR (expires_at <= now() AND expires_at > now() - interval '7 days'
+              AND notified_expired IS NULL)
+       ORDER BY expires_at LIMIT 200`,
+      [hours],
+    );
+    const now = new Date();
+    return rows
+      .map((r) => this.rowToSub(r))
+      .map((sub) => ({ sub, kind: dueKind(sub, now, hours) }))
+      .filter((x): x is { sub: SubRecord; kind: ReminderKind } => x.kind !== null);
+  }
+
+  async markNotified(token: string, kind: ReminderKind) {
+    const col = kind === "expiring" ? "notified_expiring" : "notified_expired";
+    await this.q(`UPDATE subscriptions SET ${col} = now() WHERE token = $1`, [token]);
+  }
+
+  async createLoginToken(email: string, ttlMinutes: number) {
+    const token = newToken();
+    await this.q(
+      "INSERT INTO login_tokens (token, email, expires_at) VALUES ($1, $2, now() + ($3 || ' minutes')::interval)",
+      [token, email, ttlMinutes],
+    );
+    // Заодно подчищаем просроченные.
+    await this.q("DELETE FROM login_tokens WHERE expires_at < now()");
+    return token;
+  }
+
+  async consumeLoginToken(token: string) {
+    const { rows } = await this.q(
+      "DELETE FROM login_tokens WHERE token = $1 AND expires_at > now() RETURNING email",
+      [token],
+    );
+    return rows[0] ? (rows[0].email as string) : null;
   }
 
   private async hydrateTicket(r: PgRow): Promise<Ticket> {
@@ -272,6 +400,7 @@ class PgStore implements Store {
 
 class MemoryStore implements Store {
   private subs: SubRecord[] = [];
+  private logins = new Map<string, { email: string; expiresAt: Date }>();
   private tickets: Ticket[] = [];
   private nextTicketId = 1;
   private events: (EventRecord & { createdAt: Date })[] = [];
@@ -299,19 +428,60 @@ class MemoryStore implements Store {
   async findSubByToken(token: string) {
     return this.subs.find((s) => s.token === token) ?? null;
   }
-  async createSub(rec: Omit<SubRecord, "createdAt">) {
-    const full = { ...rec, createdAt: new Date() };
+  async findSubByTelegram(chatId: string) {
+    return this.subs.find((s) => s.telegramChatId === chatId) ?? null;
+  }
+  async createSub(rec: NewSub) {
+    const full: SubRecord = {
+      ...rec,
+      createdAt: new Date(),
+      telegramChatId: null,
+      notifiedExpiring: null,
+      notifiedExpired: null,
+    };
     this.subs.push(full);
     return full;
   }
-  async extendSub(token: string, months: number, autoRenew: boolean) {
+  async updateSub(token: string, patch: SubPatch) {
     const sub = this.subs.find((s) => s.token === token);
     if (!sub) return null;
-    const base = sub.expiresAt > new Date() ? sub.expiresAt : new Date();
-    sub.expiresAt = addMonths(base, months);
-    sub.autoRenew = autoRenew;
-    sub.months = months;
+    if (patch.expiresAt && patch.expiresAt.getTime() !== sub.expiresAt.getTime()) {
+      sub.notifiedExpiring = null;
+      sub.notifiedExpired = null;
+    }
+    Object.assign(sub, patch);
     return sub;
+  }
+  async setTelegram(token: string, chatId: string | null) {
+    for (const s of this.subs) {
+      if (chatId && s.telegramChatId === chatId && s.token !== token) s.telegramChatId = null;
+      if (s.token === token) s.telegramChatId = chatId;
+    }
+  }
+  async listSubs(limit: number) {
+    return [...this.subs].reverse().slice(0, limit);
+  }
+  async listDueReminders(hours: number) {
+    const now = new Date();
+    return this.subs
+      .map((sub) => ({ sub, kind: dueKind(sub, now, hours) }))
+      .filter((x): x is { sub: SubRecord; kind: ReminderKind } => x.kind !== null);
+  }
+  async markNotified(token: string, kind: ReminderKind) {
+    const sub = this.subs.find((s) => s.token === token);
+    if (!sub) return;
+    if (kind === "expiring") sub.notifiedExpiring = new Date();
+    else sub.notifiedExpired = new Date();
+  }
+  async createLoginToken(email: string, ttlMinutes: number) {
+    const token = newToken();
+    this.logins.set(token, { email, expiresAt: new Date(Date.now() + ttlMinutes * 60_000) });
+    return token;
+  }
+  async consumeLoginToken(token: string) {
+    const rec = this.logins.get(token);
+    this.logins.delete(token);
+    return rec && rec.expiresAt > new Date() ? rec.email : null;
   }
   async createTicket(email: string, body: string) {
     const ticket: Ticket = {

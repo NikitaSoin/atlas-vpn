@@ -2,8 +2,13 @@ import type { Metadata } from "next";
 import { Golos_Text } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { brand } from "@/lib/brand";
+import { currentSub } from "@/lib/session";
+import { viaOurVpn } from "@/lib/site";
+import { subState, timeLeft } from "@/lib/subscription";
 import PageView from "./page-view";
+import StatusBanner from "./status-banner";
 import "./globals.css";
 
 const golos = Golos_Text({
@@ -16,9 +21,20 @@ export const metadata: Metadata = {
   description: brand.description,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const [sub, hdrs] = await Promise.all([currentSub(), headers()]);
+  const state = sub ? subState(sub) : null;
+  const left = sub ? timeLeft(sub) : null;
+  const viaVpn = viaOurVpn(hdrs);
+  const cabinetLabel =
+    sub && state && left
+      ? state === "trial" || state === "active"
+        ? `Кабинет · ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`}`
+        : "Кабинет · истекла"
+      : "Кабинет";
+
   return (
     <html lang="ru">
       <body className={`${golos.className} min-h-screen antialiased`}>
@@ -45,9 +61,22 @@ export default function RootLayout({
               <Link href="/support" className="hover:text-fg">
                 Поддержка
               </Link>
+              <Link
+                href="/account"
+                className={`rounded-full border px-3 py-1 text-sm ${
+                  state === "grace" || state === "expired"
+                    ? "border-bad/40 text-bad"
+                    : sub
+                      ? "border-good/40 text-good"
+                      : "border-line hover:text-fg"
+                }`}
+              >
+                {cabinetLabel}
+              </Link>
             </nav>
           </div>
         </header>
+        <StatusBanner state={state} viaVpn={viaVpn} email={sub?.email ?? null} />
 
         {children}
         <PageView />
