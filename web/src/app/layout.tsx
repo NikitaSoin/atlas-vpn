@@ -33,7 +33,7 @@ export default async function RootLayout({
       ? state === "trial" || state === "active"
         ? `Кабинет · ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`}`
         : "Кабинет · истекла"
-      : "Кабинет";
+      : "Войти";
 
   return (
     <html lang="ru">
@@ -62,7 +62,7 @@ export default async function RootLayout({
                 Поддержка
               </Link>
               <Link
-                href="/account"
+                href={sub ? "/account" : "/start?login=1"}
                 className={`rounded-full border px-3 py-1 text-sm ${
                   state === "grace" || state === "expired"
                     ? "border-bad/40 text-bad"

@@ -74,10 +74,10 @@ export interface Store {
    */
   listDueReminders(hours: number): Promise<{ sub: SubRecord; kind: ReminderKind }[]>;
   markNotified(token: string, kind: ReminderKind): Promise<void>;
-  /** Одноразовая ссылка для входа в кабинет по email. Живёт `ttlMinutes`. */
-  createLoginToken(email: string, ttlMinutes: number): Promise<string>;
-  /** Возвращает email и гасит токен; null — если нет или просрочен. */
-  consumeLoginToken(token: string): Promise<string | null>;
+  /** Код подтверждения почты (регистрация и вход). Живёт `ttlMinutes`. */
+  createEmailCode(email: string, ttlMinutes: number): Promise<string>;
+  /** true — код верный и не просрочен; код гасится при любом исходе проверки. */
+  consumeEmailCode(email: string, code: string): Promise<boolean>;
   createTicket(email: string, body: string): Promise<Ticket>;
   getTicketByToken(token: string): Promise<Ticket | null>;
   getTicketById(id: number): Promise<Ticket | null>;
@@ -91,8 +91,9 @@ export type NewSub = Pick<
   "token" | "email" | "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial"
 >;
 
-function newToken(bytes = 24): string {
-  return randomBytes(bytes).toString("base64url");
+function newCode(): string {
+  // 6 цифр: 100000–999999.
+  return String(100000 + (randomBytes(4).readUInt32BE(0) % 900000));
 }
 
 /** Кому и какое напоминание пора слать — общая логика для обоих хранилищ. */
@@ -121,9 +122,9 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expiring TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expired TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS subscriptions_expires_at ON subscriptions (expires_at);
-CREATE TABLE IF NOT EXISTS login_tokens (
-  token       TEXT PRIMARY KEY,
-  email       TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS email_codes (
+  email       TEXT PRIMARY KEY,
+  code        TEXT NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL
 );
 CREATE TABLE IF NOT EXISTS tickets (
@@ -316,23 +317,26 @@ class PgStore implements Store {
     await this.q(`UPDATE subscriptions SET ${col} = now() WHERE token = $1`, [token]);
   }
 
-  async createLoginToken(email: string, ttlMinutes: number) {
-    const token = newToken();
+  async createEmailCode(email: string, ttlMinutes: number) {
+    const code = newCode();
     await this.q(
-      "INSERT INTO login_tokens (token, email, expires_at) VALUES ($1, $2, now() + ($3 || ' minutes')::interval)",
-      [token, email, ttlMinutes],
+      `INSERT INTO email_codes (email, code, expires_at)
+       VALUES ($1, $2, now() + ($3 || ' minutes')::interval)
+       ON CONFLICT (email) DO UPDATE SET code = EXCLUDED.code, expires_at = EXCLUDED.expires_at`,
+      [email, code, ttlMinutes],
     );
-    // Заодно подчищаем просроченные.
-    await this.q("DELETE FROM login_tokens WHERE expires_at < now()");
-    return token;
+    await this.q("DELETE FROM email_codes WHERE expires_at < now()");
+    return code;
   }
 
-  async consumeLoginToken(token: string) {
+  async consumeEmailCode(email: string, code: string) {
+    // Гасим код при любой попытке — перебор шести цифр не даём.
     const { rows } = await this.q(
-      "DELETE FROM login_tokens WHERE token = $1 AND expires_at > now() RETURNING email",
-      [token],
+      "DELETE FROM email_codes WHERE email = $1 RETURNING code, expires_at",
+      [email],
     );
-    return rows[0] ? (rows[0].email as string) : null;
+    const rec = rows[0];
+    return Boolean(rec && rec.code === code && new Date(rec.expires_at as string) > new Date());
   }
 
   private async hydrateTicket(r: PgRow): Promise<Ticket> {
@@ -400,7 +404,7 @@ class PgStore implements Store {
 
 class MemoryStore implements Store {
   private subs: SubRecord[] = [];
-  private logins = new Map<string, { email: string; expiresAt: Date }>();
+  private codes = new Map<string, { code: string; expiresAt: Date }>();
   private tickets: Ticket[] = [];
   private nextTicketId = 1;
   private events: (EventRecord & { createdAt: Date })[] = [];
@@ -473,15 +477,15 @@ class MemoryStore implements Store {
     if (kind === "expiring") sub.notifiedExpiring = new Date();
     else sub.notifiedExpired = new Date();
   }
-  async createLoginToken(email: string, ttlMinutes: number) {
-    const token = newToken();
-    this.logins.set(token, { email, expiresAt: new Date(Date.now() + ttlMinutes * 60_000) });
-    return token;
+  async createEmailCode(email: string, ttlMinutes: number) {
+    const code = newCode();
+    this.codes.set(email, { code, expiresAt: new Date(Date.now() + ttlMinutes * 60_000) });
+    return code;
   }
-  async consumeLoginToken(token: string) {
-    const rec = this.logins.get(token);
-    this.logins.delete(token);
-    return rec && rec.expiresAt > new Date() ? rec.email : null;
+  async consumeEmailCode(email: string, code: string) {
+    const rec = this.codes.get(email);
+    this.codes.delete(email);
+    return Boolean(rec && rec.code === code && rec.expiresAt > new Date());
   }
   async createTicket(email: string, body: string) {
     const ticket: Ticket = {

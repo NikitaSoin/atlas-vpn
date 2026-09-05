@@ -1,12 +1,10 @@
 import Link from "next/link";
-import QRCode from "qrcode";
 import { brand } from "@/lib/brand";
 import { plans } from "@/lib/plans";
-import { buildSubscriptionUrl, getPanel } from "@/lib/panel";
 import { getStore } from "@/lib/db";
 import { telegramLinkUrl } from "@/lib/telegram";
 import { formatDate, subState, timeLeft } from "@/lib/subscription";
-import SetupClient from "./setup-client";
+import SetupSection from "../setup-section";
 
 export default async function SetupPage({
   params,
@@ -15,17 +13,6 @@ export default async function SetupPage({
 }) {
   const { token } = await params;
   const sub = await getStore().findSubByToken(token);
-  const panelSub = await getPanel().getSubscription(token);
-
-  // Пока подписочный домен не настроен, копирование и QR отдают прямой
-  // vless:// линк — он работает в любом клиенте уже сейчас.
-  const url = panelSub?.url ?? buildSubscriptionUrl(token);
-  const importLink = panelSub?.rawLink ?? url;
-  const qrSvg = await QRCode.toString(importLink, {
-    type: "svg",
-    margin: 0,
-    width: 160,
-  });
 
   // Состояние подписки: триал / активна / грейс-период (сутки) / закончилась.
   const state = sub ? subState(sub) : "unknown";
@@ -98,7 +85,7 @@ export default async function SetupPage({
       )}
 
       <div className="mt-8">
-        <SetupClient subscriptionUrl={url} importLink={importLink} qrSvg={qrSvg} />
+        <SetupSection token={token} />
       </div>
 
       {tgLink && (

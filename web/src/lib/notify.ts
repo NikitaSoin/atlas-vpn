@@ -28,8 +28,9 @@ export function messageFor(sub: SubRecord, kind: ReminderKind | "trial" | "paid"
       return {
         subject: `${brand.name}: пробный доступ включён`,
         text:
-          `Пробный доступ к ${brand.name} включён до ${until} (МСК).\n\n` +
-          `Настроить устройство — по личной ссылке, сохраните её:\n${setup}\n\n` +
+          `Аккаунт ${sub.email} создан, пробный доступ к ${brand.name} включён до ${until} (МСК).\n\n` +
+          `Кабинет: ${site}/account (вход по коду на эту почту).\n` +
+          `Настроить устройство можно и по личной ссылке:\n${setup}\n\n` +
           `Когда пробный период закончится, доступ можно продлить: ${renew}`,
       };
     case "paid":

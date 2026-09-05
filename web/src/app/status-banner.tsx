@@ -39,8 +39,8 @@ export default function StatusBanner({
       <div className="border-b border-good/30 bg-good/10">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-5 py-2.5 text-sm">
           <span>Вы сейчас в интернете через наш VPN.</span>
-          <Link href="/account" className="text-accent-ink hover:underline">
-            Посмотреть, сколько осталось
+          <Link href="/start?login=1" className="text-accent-ink hover:underline">
+            Войти и посмотреть, сколько осталось
           </Link>
         </div>
       </div>
