@@ -1,14 +1,15 @@
 /**
  * Единая точка брендирования. Меняешь здесь — меняется на всём сайте.
- * Название "Атлас" — плейсхолдер, замени на своё.
+ * Дизайн-система IREK: свобода + простота + надёжность, без «кибербезопасности».
  */
 export const brand = {
-  name: "Атлас",
-  nameLatin: "Atlas",
-  tagline: "Интернет без границ и без настроек",
+  name: "IREK VPN",
+  nameLatin: "IREK",
+  tagline: "Просто работает",
+  heroTitle: "Интернет без лишнего",
   description:
-    "Быстрый доступ к любым сайтам и сервисам. Работает на iPhone, Android, Mac и Windows.",
-  supportTelegram: "https://t.me/atlas_support",
+    "Быстрый доступ к любимым сайтам и сервисам на iPhone, Android, Mac и Windows.",
+  supportTelegram: "https://t.me/irek_vpn_support",
   supportEmail: "help@example.com",
-  domain: "atlas.example.com",
+  domain: "irekvpn.example.com",
 } as const;

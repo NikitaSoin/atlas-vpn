@@ -55,7 +55,7 @@ export default async function CheckoutPage({
           </label>
           <button
             type="submit"
-            className="w-full rounded-xl bg-accent px-4 py-3 font-medium text-white transition hover:brightness-110"
+            className="w-full rounded-xl bg-primary px-4 py-3 font-medium text-white transition hover:brightness-110"
           >
             Оплатить {plan.price} ₽
           </button>

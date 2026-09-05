@@ -34,7 +34,18 @@ export type Ticket = {
   messages: TicketMessage[];
 };
 
+export type EventRecord = {
+  event: string;
+  path: string;
+  ip: string;
+  ua: string;
+  ref: string;
+};
+
 export interface Store {
+  addEvent(e: EventRecord): Promise<void>;
+  /** Счётчики событий за последние N дней, по убыванию. */
+  eventStats(days: number): Promise<{ event: string; count: number }[]>;
   findSubByEmail(email: string): Promise<SubRecord | null>;
   findSubByToken(token: string): Promise<SubRecord | null>;
   createSub(rec: Omit<SubRecord, "createdAt">): Promise<SubRecord>;
@@ -80,6 +91,16 @@ CREATE TABLE IF NOT EXISTS ticket_messages (
   body        TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS events (
+  id          SERIAL PRIMARY KEY,
+  event       TEXT NOT NULL,
+  path        TEXT NOT NULL DEFAULT '',
+  ip          TEXT NOT NULL DEFAULT '',
+  ua          TEXT NOT NULL DEFAULT '',
+  ref         TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS events_created_at ON events (created_at);
 `;
 
 type PgRow = Record<string, unknown>;
@@ -117,6 +138,23 @@ class PgStore implements Store {
       expiresAt: new Date(r.expires_at as string),
       createdAt: new Date(r.created_at as string),
     };
+  }
+
+  async addEvent(e: EventRecord) {
+    await this.q(
+      "INSERT INTO events (event, path, ip, ua, ref) VALUES ($1, $2, $3, $4, $5)",
+      [e.event, e.path, e.ip, e.ua, e.ref],
+    );
+  }
+
+  async eventStats(days: number) {
+    const { rows } = await this.q(
+      `SELECT event, COUNT(*)::int AS count FROM events
+       WHERE created_at > now() - ($1 || ' days')::interval
+       GROUP BY event ORDER BY count DESC`,
+      [days],
+    );
+    return rows.map((r) => ({ event: r.event as string, count: r.count as number }));
   }
 
   async findSubByEmail(email: string) {
@@ -217,6 +255,24 @@ class MemoryStore implements Store {
   private subs: SubRecord[] = [];
   private tickets: Ticket[] = [];
   private nextTicketId = 1;
+  private events: (EventRecord & { createdAt: Date })[] = [];
+
+  async addEvent(e: EventRecord) {
+    this.events.push({ ...e, createdAt: new Date() });
+    if (this.events.length > 5000) this.events.shift();
+  }
+
+  async eventStats(days: number) {
+    const since = Date.now() - days * 86400_000;
+    const counts = new Map<string, number>();
+    for (const e of this.events) {
+      if (e.createdAt.getTime() < since) continue;
+      counts.set(e.event, (counts.get(e.event) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([event, count]) => ({ event, count }))
+      .sort((a, b) => b.count - a.count);
+  }
 
   async findSubByEmail(email: string) {
     return this.subs.find((s) => s.email === email) ?? null;

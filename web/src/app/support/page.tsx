@@ -36,7 +36,7 @@ export default function SupportPage() {
         </label>
         <button
           type="submit"
-          className="w-full rounded-xl bg-accent px-4 py-3 font-medium text-white transition hover:brightness-110"
+          className="w-full rounded-xl bg-primary px-4 py-3 font-medium text-white transition hover:brightness-110"
         >
           Отправить
         </button>
@@ -48,7 +48,7 @@ export default function SupportPage() {
           href={brand.supportTelegram}
           target="_blank"
           rel="noreferrer"
-          className="text-accent hover:underline"
+          className="text-accent-ink hover:underline"
         >
           Напишите нам туда
         </a>

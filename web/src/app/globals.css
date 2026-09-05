@@ -1,30 +1,40 @@
 @import "tailwindcss";
 
+/*
+ * Дизайн-система IREK VPN — светлая, тёплая, без неона.
+ * Основной #153A5B (глубокий синий) — кнопки и заголовки.
+ * Акцент #20B8A6 (тёплый бирюзовый) — ссылки, рамки, отметки.
+ */
 @theme {
-  --color-ink: #05070d;
-  --color-surface: #0c1018;
-  --color-surface-2: #141a26;
-  --color-line: #232c3d;
-  --color-fg: #eef2f8;
-  --color-muted: #8b97ac;
-  --color-accent: #4f8cff;
-  --color-accent-soft: #1c2a45;
-  --color-good: #35d08a;
+  --color-ink: #f7f8f6; /* фон страницы (молочно-белый) */
+  --color-surface: #ffffff; /* карточки */
+  --color-surface-2: #eef1ef;
+  --color-line: #e0e6e2;
+  --color-fg: #17212b; /* основной текст */
+  --color-muted: #5b6b77;
+  --color-primary: #153a5b; /* кнопки и сильные элементы */
+  --color-primary-soft: #e7eef5;
+  --color-accent: #20b8a6; /* декоративный акцент */
+  --color-accent-ink: #0e7e71; /* бирюзовый для текста — темнее ради контраста */
+  --color-accent-soft: #dff4f1;
+  --color-good: #24a865;
+  --color-bad: #d94b4b;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
   background: var(--color-ink);
   color: var(--color-fg);
+  font-size: 17px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Мягкое свечение под первым экраном. */
+/* Мягкий свет под первым экраном — небо и дорога, как в логотипе. */
 .hero-glow {
   background:
-    radial-gradient(60% 55% at 50% 0%, rgba(79, 140, 255, 0.16), transparent 70%),
-    radial-gradient(40% 40% at 85% 20%, rgba(53, 208, 138, 0.08), transparent 70%);
+    radial-gradient(55% 50% at 50% 0%, rgba(32, 184, 166, 0.1), transparent 70%),
+    radial-gradient(40% 40% at 80% 15%, rgba(21, 58, 91, 0.08), transparent 70%);
 }

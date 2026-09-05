@@ -58,19 +58,28 @@ export const clientsByPlatform: Record<Platform, VpnClient[]> = {
   ],
   android: [
     {
+      // Тот же основной клиент, что и на iOS. Пакет llc.itdev.incy.
+      id: "incy-android",
+      name: "INCY",
+      note: "Бесплатный, ставится из Google Play. После установки вставьте ссылку из блока ниже.",
+      installUrl:
+        "https://play.google.com/store/apps/details?id=llc.itdev.incy",
+      installLabel: "Установить из Google Play",
+      recommended: true,
+    },
+    {
       id: "v2rayng",
       name: "v2rayNG",
-      note: "Бесплатный, ставится напрямую с нашего сайта — Google Play не нужен.",
+      note: "Бесплатный, ставится напрямую APK-файлом — Google Play не нужен.",
       installUrl:
         "https://github.com/2dust/v2rayNG/releases/latest",
       installLabel: "Скачать APK",
       deepLink: (url) => `v2rayng://install-sub?url=${encodeURIComponent(url)}`,
-      recommended: true,
     },
     {
       id: "happ",
       name: "Happ",
-      note: "Бесплатный, есть в Google Play. Удобнее интерфейс.",
+      note: "Бесплатный, есть в Google Play. Запасной вариант.",
       installUrl:
         "https://play.google.com/store/apps/details?id=com.happproxy",
       installLabel: "Установить из Google Play",

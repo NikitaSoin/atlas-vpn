@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { findPlan } from "@/lib/plans";
 import { getPanel } from "@/lib/panel";
 import { getStore } from "@/lib/db";
+import { track } from "@/lib/analytics";
 
 /**
  * Приём оплаты и выдача доступа.
@@ -34,9 +35,13 @@ export async function POST(req: NextRequest) {
   const store = getStore();
   const existing = await store.findSubByEmail(email);
 
+  await track(req.headers, existing ? "checkout_renewal" : "checkout_new", plan.id);
+
   let token: string;
   if (existing) {
     await store.extendSub(existing.token, plan.months, autoRenew);
+    // Панель — источник правды для VPN-доступа: продлеваем и там.
+    await getPanel().extendSubscription(existing.token, plan.months);
     token = existing.token;
   } else {
     const panelSub = await getPanel().createSubscription({

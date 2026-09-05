@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { brand } from "@/lib/brand";
 import { plans, TRIAL_DAYS } from "@/lib/plans";
@@ -24,8 +25,8 @@ const faq = [
     a: "Ни один сайт не может включить VPN сам — операционные системы iOS, Android, Windows и macOS запрещают это из соображений безопасности. Приложение обязательно у любого VPN-сервиса без исключений. Мы сделали так, что настройка занимает один тап: приложение получает все параметры по ссылке, вручную ничего вводить не нужно.",
   },
   {
-    q: "Приложения нет в российском App Store. Что делать?",
-    a: "Нужно один раз бесплатно переключить регион Apple Account на любой другой — например, Турцию. Это занимает пять минут, карта не требуется, все ваши покупки и данные сохраняются. Пошаговая инструкция будет на экране после оплаты. На Android этой проблемы нет вообще.",
+    q: "Нужно ли менять регион App Store?",
+    a: "Нет. Приложение INCY, которое мы рекомендуем, доступно в российском App Store и в Google Play — ставится как обычное приложение. Если захотите другой клиент из тех, что мы предлагаем на выбор, может понадобиться бесплатная смена региона — инструкция будет на экране после оплаты.",
   },
   {
     q: "На скольких устройствах работает одна подписка?",
@@ -45,22 +46,30 @@ export default function Home() {
   return (
     <main>
       <section className="hero-glow">
-        <div className="mx-auto max-w-5xl px-5 pb-20 pt-20 text-center sm:pt-28">
-          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted">
+        <div className="mx-auto max-w-5xl px-5 pb-20 pt-16 text-center sm:pt-24">
+          <Image
+            src="/emblem.png"
+            alt=""
+            width={88}
+            height={88}
+            priority
+            className="mx-auto rounded-full"
+          />
+          <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-good" />
             Первые {TRIAL_DAYS} дня бесплатно
           </span>
-          <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
-            {brand.tagline}
+          <h1 className="mx-auto mt-5 max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-primary sm:text-6xl">
+            {brand.heroTitle}
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg text-muted">
             {brand.description} Настройка — одна кнопка, без инструкций на
-            двадцать шагов.
+            двадцать шагов. {brand.name} — {brand.tagline.toLowerCase()}.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="#tarify"
-              className="rounded-xl bg-accent px-6 py-3 font-medium text-white transition hover:brightness-110"
+              className="rounded-xl bg-primary px-6 py-3 font-medium text-white transition hover:brightness-110"
             >
               Подключить
             </Link>
@@ -87,7 +96,7 @@ export default function Home() {
               key={s.title}
               className="rounded-2xl border border-line bg-surface p-6"
             >
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent-soft text-sm font-semibold text-accent">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent-soft text-sm font-semibold text-accent-ink">
                 {i + 1}
               </span>
               <h3 className="mt-4 font-medium">{s.title}</h3>
@@ -115,7 +124,7 @@ export default function Home() {
               }`}
             >
               {plan.popular && (
-                <span className="absolute -top-2.5 left-6 rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-white">
+                <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-white">
                   Выгоднее всего
                 </span>
               )}
@@ -132,7 +141,7 @@ export default function Home() {
                 href={`/checkout?plan=${plan.id}`}
                 className={`mt-6 block rounded-xl px-4 py-2.5 text-center font-medium transition ${
                   plan.popular
-                    ? "bg-accent text-white hover:brightness-110"
+                    ? "bg-primary text-white hover:brightness-110"
                     : "border border-line text-fg hover:border-accent"
                 }`}
               >

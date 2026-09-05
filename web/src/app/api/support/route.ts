@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
+import { track } from "@/lib/analytics";
 
 /** Создание обращения или ответ пользователя в существующем. */
 export async function POST(req: NextRequest) {
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Некорректный email" }, { status: 400 });
   }
   const ticket = await store.createTicket(email, message);
+  await track(req.headers, "ticket_created");
   return NextResponse.redirect(new URL(`/support/t/${ticket.token}`, req.url), {
     status: 303,
   });

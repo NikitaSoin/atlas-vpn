@@ -2,7 +2,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { brand } from "@/lib/brand";
 import { GRACE_HOURS } from "@/lib/plans";
-import { buildSubscriptionUrl } from "@/lib/panel";
+import { buildSubscriptionUrl, getPanel } from "@/lib/panel";
 import { getStore } from "@/lib/db";
 import SetupClient from "./setup-client";
 
@@ -13,9 +13,17 @@ export default async function SetupPage({
 }) {
   const { token } = await params;
   const sub = await getStore().findSubByToken(token);
+  const panelSub = await getPanel().getSubscription(token);
 
-  const url = buildSubscriptionUrl(token);
-  const qrSvg = await QRCode.toString(url, { type: "svg", margin: 0, width: 160 });
+  // Пока подписочный домен не настроен, копирование и QR отдают прямой
+  // vless:// линк — он работает в любом клиенте уже сейчас.
+  const url = panelSub?.url ?? buildSubscriptionUrl(token);
+  const importLink = panelSub?.rawLink ?? url;
+  const qrSvg = await QRCode.toString(importLink, {
+    type: "svg",
+    margin: 0,
+    width: 160,
+  });
 
   // Состояние подписки: активна / грейс-период (сутки) / закончилась.
   const now = new Date();
@@ -37,8 +45,8 @@ export default async function SetupPage({
   return (
     <main className="mx-auto max-w-2xl px-5 py-16">
       {state === "grace" && (
-        <div className="mb-6 rounded-2xl border border-yellow-500/40 bg-yellow-500/10 p-4 text-sm">
-          <p className="font-medium text-yellow-300">
+        <div className="mb-6 rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
+          <p className="font-medium text-amber-700">
             Подписка закончилась — доступ отключится в ближайшие часы
           </p>
           <p className="mt-1 text-muted">
@@ -46,21 +54,21 @@ export default async function SetupPage({
           </p>
           <Link
             href={renewHref}
-            className="mt-3 inline-block rounded-xl bg-accent px-4 py-2 font-medium text-white transition hover:brightness-110"
+            className="mt-3 inline-block rounded-xl bg-primary px-4 py-2 font-medium text-white transition hover:brightness-110"
           >
             Продлить
           </Link>
         </div>
       )}
       {state === "expired" && (
-        <div className="mb-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm">
-          <p className="font-medium text-red-300">Подписка закончилась</p>
+        <div className="mb-6 rounded-2xl border border-bad/40 bg-bad/10 p-4 text-sm">
+          <p className="font-medium text-bad">Подписка закончилась</p>
           <p className="mt-1 text-muted">
             После оплаты доступ включится сам — ссылка и настройки прежние.
           </p>
           <Link
             href={renewHref}
-            className="mt-3 inline-block rounded-xl bg-accent px-4 py-2 font-medium text-white transition hover:brightness-110"
+            className="mt-3 inline-block rounded-xl bg-primary px-4 py-2 font-medium text-white transition hover:brightness-110"
           >
             Возобновить
           </Link>
@@ -93,7 +101,7 @@ export default async function SetupPage({
       )}
 
       <div className="mt-8">
-        <SetupClient subscriptionUrl={url} qrSvg={qrSvg} />
+        <SetupClient subscriptionUrl={url} importLink={importLink} qrSvg={qrSvg} />
       </div>
 
       <div className="mt-8 rounded-2xl border border-line bg-surface p-5">

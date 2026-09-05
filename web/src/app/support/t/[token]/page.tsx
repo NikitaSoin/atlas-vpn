@@ -32,7 +32,7 @@ export default async function TicketPage({
         <span
           className={`rounded-full px-2.5 py-0.5 text-xs ${
             ticket.status === "open"
-              ? "bg-accent-soft text-accent"
+              ? "bg-accent-soft text-accent-ink"
               : "bg-surface-2 text-muted"
           }`}
         >
@@ -81,7 +81,7 @@ export default async function TicketPage({
         />
         <button
           type="submit"
-          className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:brightness-110"
+          className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white transition hover:brightness-110"
         >
           Отправить
         </button>

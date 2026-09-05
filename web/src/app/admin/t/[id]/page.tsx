@@ -23,7 +23,7 @@ export default async function AdminTicketPage({
     return (
       <main className="mx-auto max-w-md px-5 py-16">
         <p>
-          Нет доступа — <Link href="/admin" className="text-accent">войдите</Link>.
+          Нет доступа — <Link href="/admin" className="text-accent-ink">войдите</Link>.
         </p>
       </main>
     );
@@ -99,7 +99,7 @@ export default async function AdminTicketPage({
         />
         <button
           type="submit"
-          className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:brightness-110"
+          className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white transition hover:brightness-110"
         >
           Ответить
         </button>

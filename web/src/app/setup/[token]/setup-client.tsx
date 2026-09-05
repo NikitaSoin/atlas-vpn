@@ -19,9 +19,12 @@ function detectPlatform(): Platform {
 
 export default function SetupClient({
   subscriptionUrl,
+  importLink,
   qrSvg,
 }: {
   subscriptionUrl: string;
+  /** Что копируем и кодируем в QR: vless:// пока нет домена, потом — подписка. */
+  importLink: string;
   qrSvg: string;
 }) {
   const [platform, setPlatform] = useState<Platform>("ios");
@@ -31,7 +34,7 @@ export default function SetupClient({
   useEffect(() => setPlatform(detectPlatform()), []);
 
   async function copy() {
-    await navigator.clipboard.writeText(subscriptionUrl);
+    await navigator.clipboard.writeText(importLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -69,7 +72,7 @@ export default function SetupClient({
             <div className="flex items-center gap-2">
               <h3 className="font-medium">{client.name}</h3>
               {client.recommended && (
-                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent">
+                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent-ink">
                   рекомендуем
                 </span>
               )}
@@ -88,7 +91,7 @@ export default function SetupClient({
               {client.deepLink && (
                 <a
                   href={client.deepLink(subscriptionUrl)}
-                  className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition hover:brightness-110"
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition hover:brightness-110"
                 >
                   2. Добавить подписку
                 </a>
@@ -106,7 +109,7 @@ export default function SetupClient({
         </p>
         <div className="mt-4 flex gap-2">
           <code className="flex-1 truncate rounded-xl border border-line bg-ink px-4 py-2.5 text-sm text-muted">
-            {subscriptionUrl}
+            {importLink}
           </code>
           <button
             onClick={copy}
@@ -117,7 +120,7 @@ export default function SetupClient({
         </div>
         <button
           onClick={() => setShowQr((v) => !v)}
-          className="mt-3 text-sm text-accent hover:underline"
+          className="mt-3 text-sm text-accent-ink hover:underline"
         >
           {showQr ? "Скрыть QR-код" : "Показать QR-код для другого устройства"}
         </button>
