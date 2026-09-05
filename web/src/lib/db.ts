@@ -178,16 +178,50 @@ export function normalizePem(raw: string): string {
   return blocks.map((m) => wrap(m[1], m[2])).join("\n");
 }
 
+/**
+ * Разбор строки подключения «вручную»: пароль, вставленный в панель как есть,
+ * может содержать `#`, `>`, `@` и прочее, что ломает стандартный разбор URL.
+ * Берём пароль как всё между первым «user:» и ПОСЛЕДНИМ «@» перед хостом,
+ * а если он был закодирован (%23 и т. п.) — декодируем.
+ */
+export function parseDbUrl(raw: string) {
+  const m = raw
+    .trim()
+    .match(/^postgres(?:ql)?:\/\/([^:\/@]+):(.*)@([^@\/:]+)(?::(\d+))?\/([^?]+)(?:\?(.*))?$/);
+  if (!m) return null;
+  const decode = (v: string) => {
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      return v;
+    }
+  };
+  const params = new URLSearchParams(m[6] ?? "");
+  return {
+    user: decode(m[1]),
+    password: decode(m[2]),
+    host: m[3],
+    port: m[4] ? Number(m[4]) : 5432,
+    database: decode(m[5]),
+    sslmode: params.get("sslmode"),
+  };
+}
+
 function pgConfig(url: string) {
   const rawCa = process.env.DATABASE_SSL_CA?.trim();
   const ca = rawCa ? normalizePem(rawCa) : "";
-  if (!ca) return { connectionString: url };
-  const u = new URL(url);
-  u.searchParams.delete("sslmode");
-  return {
-    connectionString: u.toString(),
-    ssl: { ca, rejectUnauthorized: true },
-  };
+  const parsed = parseDbUrl(url);
+  if (!parsed) {
+    // Непохоже на наш формат — отдаём строку как есть, пусть разбирает pg.
+    return ca ? { connectionString: url, ssl: { ca, rejectUnauthorized: true } } : { connectionString: url };
+  }
+  const { user, password, host, port, database, sslmode } = parsed;
+  const ssl = ca
+    ? { ca, rejectUnauthorized: true }
+    : sslmode && sslmode !== "disable"
+      ? { rejectUnauthorized: sslmode === "verify-full" || sslmode === "verify-ca" }
+      : undefined;
+  return { user, password, host, port, database, ...(ssl ? { ssl } : {}) };
 }
 
 class PgStore implements Store {
