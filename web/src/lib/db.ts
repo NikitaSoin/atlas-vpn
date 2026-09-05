@@ -105,6 +105,25 @@ CREATE INDEX IF NOT EXISTS events_created_at ON events (created_at);
 
 type PgRow = Record<string, unknown>;
 
+/**
+ * Параметры подключения. Управляемая PostgreSQL Timeweb подписана их
+ * собственным корневым сертификатом, которого нет в системном наборе Node.
+ * Чтобы `sslmode=verify-full` проходил, PEM-содержимое этого сертификата
+ * кладём в DATABASE_SSL_CA. Тогда `sslmode` из строки убираем: параметры,
+ * распарсенные из строки, перекрывают явный `ssl`, а нам нужен именно он.
+ * Без DATABASE_SSL_CA строка используется как есть.
+ */
+function pgConfig(url: string) {
+  const ca = process.env.DATABASE_SSL_CA?.trim();
+  if (!ca) return { connectionString: url };
+  const u = new URL(url);
+  u.searchParams.delete("sslmode");
+  return {
+    connectionString: u.toString(),
+    ssl: { ca, rejectUnauthorized: true },
+  };
+}
+
 class PgStore implements Store {
   // Тип пула без импорта типов pg на верхнем уровне (пакет серверный).
   private pool: { query(sql: string, params?: unknown[]): Promise<{ rows: PgRow[] }> } | null = null;
@@ -116,7 +135,7 @@ class PgStore implements Store {
     if (!this.ready) {
       this.ready = (async () => {
         const { Pool } = await import("pg");
-        this.pool = new Pool({ connectionString: this.url, max: 5 });
+        this.pool = new Pool({ ...pgConfig(this.url), max: 5 });
         await this.pool.query(SCHEMA);
       })();
     }
