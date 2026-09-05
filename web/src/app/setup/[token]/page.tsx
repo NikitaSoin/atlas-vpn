@@ -85,7 +85,15 @@ export default async function SetupPage({
       )}
 
       <div className="mt-8">
-        {sub ? (
+        {sub && state === "none" ? (
+          <p className="text-sm text-muted">
+            Доступ ещё не выбран.{" "}
+            <Link href="/account" className="text-accent-ink hover:underline">
+              Включить пробный период или выбрать тариф
+            </Link>
+            .
+          </p>
+        ) : sub ? (
           <SetupSection sub={sub} />
         ) : (
           <p className="text-sm text-bad">Ссылка не найдена. Войдите в кабинет — там та же инструкция.</p>

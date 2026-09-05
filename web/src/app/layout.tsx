@@ -32,7 +32,9 @@ export default async function RootLayout({
     sub && state && left
       ? state === "trial" || state === "active"
         ? `Кабинет · ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`}`
-        : "Кабинет · истекла"
+        : state === "none"
+          ? "Кабинет"
+          : "Кабинет · истекла"
       : "Войти";
 
   return (
@@ -66,7 +68,7 @@ export default async function RootLayout({
                 className={`rounded-full border px-3 py-1 text-sm ${
                   state === "grace" || state === "expired"
                     ? "border-bad/40 text-bad"
-                    : sub
+                    : sub && state !== "none"
                       ? "border-good/40 text-good"
                       : "border-line hover:text-fg"
                 }`}

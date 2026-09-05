@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { absoluteUrl } from "@/lib/site";
 import { getStore } from "@/lib/db";
 import { setSession } from "@/lib/session";
-import { startTrial } from "@/lib/subscription";
-import { notify } from "@/lib/notify";
+import { createAccount } from "@/lib/subscription";
 import { track } from "@/lib/analytics";
 
 /** Проверка кода: верный → аккаунт (новый — с пробным доступом) и кабинет. */
@@ -25,11 +24,9 @@ export async function POST(req: NextRequest) {
   let sub = await store.findSubByEmail(email);
   let isNew = false;
   if (!sub) {
-    // Панель регистрацию не блокирует: доступ доведётся планировщиком.
-    sub = await startTrial(email);
+    sub = await createAccount(email);
     isNew = true;
-    await track(req.headers, "trial_started");
-    notify(sub, "trial").catch(() => {});
+    await track(req.headers, "account_created");
   } else {
     await track(req.headers, "login");
   }

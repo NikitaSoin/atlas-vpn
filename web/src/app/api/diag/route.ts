@@ -89,7 +89,15 @@ async function panelNetProbe() {
     }
     const t1 = Date.now();
     const tcp = dns.ok ? { ...(await probe(dns.address!, port)), ms: Date.now() - t1 } : null;
-    return { host: u.hostname, port, dns, tcp };
+    // Какие порты хоста панели вообще достижимы отсюда — чтобы выбрать рабочий.
+    const ports = dns.ok
+      ? Object.fromEntries(
+          await Promise.all(
+            [22, 80, 443, 3000, 8443].map(async (p) => [p, (await probe(dns.address!, p, 4000)).ok]),
+          ),
+        )
+      : null;
+    return { host: u.hostname, port, dns, tcp, ports };
   } catch (e) {
     return { error: (e as Error).message };
   }

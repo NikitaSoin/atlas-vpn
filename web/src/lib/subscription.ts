@@ -21,9 +21,11 @@ import {
  *  - токен и ссылка никогда не меняются.
  */
 
-export type SubState = "trial" | "active" | "grace" | "expired";
+/** none — аккаунт есть, доступ ещё не выбран (ни триала, ни оплаты). */
+export type SubState = "none" | "trial" | "active" | "grace" | "expired";
 
 export function subState(sub: SubRecord, now = new Date()): SubState {
+  if (sub.planId === "none") return "none";
   if (now < sub.expiresAt) return sub.isTrial ? "trial" : "active";
   if (!sub.isTrial && now < graceEnd(sub)) return "grace";
   return "expired";
@@ -40,6 +42,7 @@ export function timeLeft(sub: SubRecord, now = new Date()) {
 }
 
 export const stateLabel: Record<SubState, string> = {
+  none: "Доступ ещё не подключён",
   trial: "Пробный период",
   active: "Доступ активен",
   grace: "Подписка закончилась — доступ отключится в ближайшие часы",
@@ -82,19 +85,31 @@ export async function provisionPending(): Promise<number> {
   return done;
 }
 
-/** Регистрация: аккаунт с пробным доступом. Панель — следом, не блокирует. */
-export async function startTrial(email: string): Promise<SubRecord> {
-  const expiresAt = addDays(new Date(), TRIAL_DAYS);
-  const sub = await getStore().createSub({
+/** Регистрация: просто аккаунт. Триал или тариф человек выбирает сам в кабинете. */
+export async function createAccount(email: string): Promise<SubRecord> {
+  return getStore().createSub({
     token: newAccountToken(),
     email,
+    planId: "none",
+    months: 0,
+    autoRenew: false,
+    expiresAt: new Date(),
+    isTrial: false,
+  });
+}
+
+/** Пробный период по явному выбору. Один на аккаунт. Панель — следом, не блокирует. */
+export async function startTrial(sub: SubRecord): Promise<SubRecord | null> {
+  if (sub.trialUsed || sub.planId !== "none") return null;
+  const updated = await getStore().updateSub(sub.token, {
     planId: "trial",
     months: 0,
     autoRenew: false,
-    expiresAt,
+    expiresAt: addDays(new Date(), TRIAL_DAYS),
     isTrial: true,
+    trialUsed: true,
   });
-  return provisionPanel(sub);
+  return updated ? provisionPanel(updated) : null;
 }
 
 /** Оплата: новая подписка или продление существующей (в т.ч. триала). */

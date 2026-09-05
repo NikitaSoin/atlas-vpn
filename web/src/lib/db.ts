@@ -19,6 +19,8 @@ export type SubRecord = {
   createdAt: Date;
   /** Пробный период без оплаты. После первой оплаты становится false. */
   isTrial: boolean;
+  /** Пробный период уже брали — второй не даём. */
+  trialUsed: boolean;
   /**
    * Идентификатор пользователя в VPN-панели (shortUuid). null — доступ ещё
    * не заведён: панель была недоступна при регистрации, планировщик
@@ -33,7 +35,7 @@ export type SubRecord = {
 };
 
 export type SubPatch = Partial<
-  Pick<SubRecord, "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial">
+  Pick<SubRecord, "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial" | "trialUsed">
 >;
 
 export type ReminderKind = "expiring" | "expired";
@@ -133,6 +135,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 -- Миграции: таблица могла быть создана до появления этих колонок.
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS is_trial BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_token TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_used BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expiring TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expired TIMESTAMPTZ;
@@ -272,6 +275,7 @@ class PgStore implements Store {
       expiresAt: new Date(r.expires_at as string),
       createdAt: new Date(r.created_at as string),
       isTrial: Boolean(r.is_trial),
+      trialUsed: Boolean(r.trial_used),
       panelToken: (r.panel_token as string | null) ?? null,
       telegramChatId: (r.telegram_chat_id as string | null) ?? null,
       notifiedExpiring: r.notified_expiring ? new Date(r.notified_expiring as string) : null,
@@ -316,9 +320,9 @@ class PgStore implements Store {
 
   async createSub(rec: NewSub) {
     const { rows } = await this.q(
-      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial, panel_token)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [rec.token, rec.email, rec.planId, rec.months, rec.autoRenew, rec.expiresAt, rec.isTrial, rec.panelToken ?? null],
+      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial, panel_token, trial_used)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [rec.token, rec.email, rec.planId, rec.months, rec.autoRenew, rec.expiresAt, rec.isTrial, rec.panelToken ?? null, rec.isTrial],
     );
     return this.rowToSub(rows[0]);
   }
@@ -329,7 +333,7 @@ class PgStore implements Store {
 
   async listUnprovisioned(limit: number) {
     const { rows } = await this.q(
-      "SELECT * FROM subscriptions WHERE panel_token IS NULL ORDER BY created_at LIMIT $1",
+      "SELECT * FROM subscriptions WHERE panel_token IS NULL AND plan_id <> 'none' ORDER BY created_at LIMIT $1",
       [limit],
     );
     return rows.map((r) => this.rowToSub(r));
@@ -341,12 +345,12 @@ class PgStore implements Store {
     const next = { ...current, ...patch };
     const { rows } = await this.q(
       `UPDATE subscriptions
-       SET plan_id = $2, months = $3, auto_renew = $4, expires_at = $5, is_trial = $6,
+       SET plan_id = $2, months = $3, auto_renew = $4, expires_at = $5, is_trial = $6, trial_used = $7,
            -- новый срок — новые напоминания
            notified_expiring = CASE WHEN expires_at <> $5 THEN NULL ELSE notified_expiring END,
            notified_expired  = CASE WHEN expires_at <> $5 THEN NULL ELSE notified_expired END
        WHERE token = $1 RETURNING *`,
-      [token, next.planId, next.months, next.autoRenew, next.expiresAt, next.isTrial],
+      [token, next.planId, next.months, next.autoRenew, next.expiresAt, next.isTrial, next.trialUsed || next.isTrial],
     );
     return this.rowToSub(rows[0]);
   }
@@ -516,6 +520,7 @@ class MemoryStore implements Store {
   async createSub(rec: NewSub) {
     const full: SubRecord = {
       ...rec,
+      trialUsed: rec.isTrial,
       panelToken: rec.panelToken ?? null,
       createdAt: new Date(),
       telegramChatId: null,
@@ -533,6 +538,7 @@ class MemoryStore implements Store {
       sub.notifiedExpired = null;
     }
     Object.assign(sub, patch);
+    if (sub.isTrial) sub.trialUsed = true;
     return sub;
   }
   async setPanelToken(token: string, panelToken: string) {
@@ -540,7 +546,7 @@ class MemoryStore implements Store {
     if (sub) sub.panelToken = panelToken;
   }
   async listUnprovisioned(limit: number) {
-    return this.subs.filter((s) => !s.panelToken).slice(0, limit);
+    return this.subs.filter((s) => !s.panelToken && s.planId !== "none").slice(0, limit);
   }
   async setTelegram(token: string, chatId: string | null) {
     for (const s of this.subs) {

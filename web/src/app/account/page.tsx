@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { brand } from "@/lib/brand";
-import { plans } from "@/lib/plans";
+import { plans, TRIAL_DAYS, TRIAL_TRAFFIC_GB } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
 import { telegramLinkUrl } from "@/lib/telegram";
 import { formatDate, stateLabel, subState, timeLeft } from "@/lib/subscription";
@@ -13,6 +13,66 @@ const btnPrimary =
   "rounded-xl bg-primary px-4 py-2.5 font-medium text-white transition hover:brightness-110";
 const btnGhost = "rounded-xl border border-line px-4 py-2.5 text-sm transition hover:border-accent";
 
+/** Аккаунт есть, доступ ещё не выбран: пробный период или тариф. */
+function ChooseAccess({ email, trialUsed, err }: { email: string; trialUsed: boolean; err?: string }) {
+  return (
+    <main className="mx-auto max-w-2xl px-5 py-16">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Аккаунт создан</h1>
+          <p className="mt-1 text-muted">{email}</p>
+        </div>
+        <form action="/api/account" method="POST">
+          <input type="hidden" name="action" value="logout" />
+          <button className="text-sm text-muted hover:text-fg">Выйти</button>
+        </form>
+      </div>
+
+      <p className="mt-6 text-muted">
+        Теперь выберите, как подключиться. После этого покажем, какое приложение
+        поставить и дадим ссылку для импорта одним тапом.
+      </p>
+      {err === "trial" && (
+        <p className="mt-3 text-sm text-bad">Пробный период на этот аккаунт уже был. Выберите тариф.</p>
+      )}
+
+      {!trialUsed && (
+        <section className="mt-6 rounded-2xl border border-accent bg-accent-soft/40 p-6">
+          <h2 className="text-lg font-semibold">{TRIAL_DAYS} дня бесплатно</h2>
+          <p className="mt-1.5 text-sm text-muted">
+            Без карты. {TRIAL_TRAFFIC_GB} ГБ трафика, все ваши устройства. Когда
+            закончится — просто выключится, ничего не спишем.
+          </p>
+          <form action="/api/trial" method="POST" className="mt-4">
+            <button type="submit" className={btnPrimary}>
+              Включить пробный доступ
+            </button>
+          </form>
+        </section>
+      )}
+
+      <section className="mt-6">
+        <h2 className="font-medium">{trialUsed ? "Тарифы" : "Или сразу оплатить"}</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {plans.map((plan) => (
+            <Link
+              key={plan.id}
+              href={`/checkout?plan=${plan.id}&email=${encodeURIComponent(email)}`}
+              className={`rounded-2xl border p-4 transition hover:border-accent ${
+                plan.popular ? "border-accent bg-accent-soft/40" : "border-line bg-surface"
+              }`}
+            >
+              <div className="font-medium">{plan.title}</div>
+              <div className="mt-1 text-2xl font-semibold">{plan.price} ₽</div>
+              <div className="text-xs text-muted">{plan.perMonth} ₽ / мес</div>
+            </Link>
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 /**
  * Кабинет: кто вы (email), что с доступом (статус, сколько осталось) и как
  * подключить устройство. Всё, что нужно пользователю, — на одной странице.
@@ -20,13 +80,14 @@ const btnGhost = "rounded-xl border border-line px-4 py-2.5 text-sm transition h
 export default async function AccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string }>;
+  searchParams: Promise<{ new?: string; err?: string }>;
 }) {
   const sub = await currentSub();
   if (!sub) redirect("/start?login=1");
-  const { new: isNew } = await searchParams;
+  const { new: isNew, err } = await searchParams;
 
   const state = subState(sub);
+  if (state === "none") return <ChooseAccess email={sub.email} trialUsed={sub.trialUsed} err={err} />;
   const left = timeLeft(sub);
   const active = state === "trial" || state === "active";
   const tone = active
@@ -43,7 +104,7 @@ export default async function AccountPage({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {isNew ? "Аккаунт создан" : "Кабинет"}
+            {isNew ? "Доступ включён" : "Кабинет"}
           </h1>
           <p className="mt-1 text-muted">{sub.email}</p>
         </div>

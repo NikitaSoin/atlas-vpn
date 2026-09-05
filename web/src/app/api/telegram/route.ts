@@ -79,7 +79,9 @@ export async function POST(req: NextRequest) {
     `${stateLabel[state]}.`,
     state === "trial" || state === "active"
       ? `Осталось ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`} — до ${formatDateTime(sub.expiresAt)} (МСК).`
-      : `Продлить: ${site}/checkout?email=${encodeURIComponent(sub.email)}`,
+      : state === "none"
+        ? `Выбрать пробный период или тариф: ${site}/account`
+        : `Продлить: ${site}/checkout?email=${encodeURIComponent(sub.email)}`,
     `Кабинет: ${site}/account`,
   ];
   await sendTelegram(chatId, lines.join("\n"));
