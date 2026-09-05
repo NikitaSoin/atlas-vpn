@@ -65,9 +65,9 @@ async function panelProbe() {
       signal: AbortSignal.timeout(8000),
       cache: "no-store",
     });
-    return { ok: res.ok, mode, status: res.status, ms: Date.now() - t0 };
+    return { ok: res.ok, mode, url: base, status: res.status, ms: Date.now() - t0 };
   } catch (e) {
-    return { ok: false, mode, error: (e as Error).message, ms: Date.now() - t0 };
+    return { ok: false, mode, url: base, error: (e as Error).message, ms: Date.now() - t0 };
   }
 }
 
