@@ -35,7 +35,14 @@ export default async function StartPage({
       >
         {err === "email" && <p className="text-sm text-bad">Похоже, email с опечаткой — проверьте.</p>}
         {err === "send" && (
-          <p className="text-sm text-bad">Не удалось отправить письмо. Попробуйте ещё раз через минуту.</p>
+          <p className="text-sm text-bad">
+            Не удалось отправить письмо. Попробуйте ещё раз через минуту, а если
+            повторится — напишите в{" "}
+            <a href={brand.supportTelegram} className="underline" target="_blank" rel="noreferrer">
+              поддержку
+            </a>
+            .
+          </p>
         )}
         {err === "nomail" && (
           <p className="text-sm text-bad">
