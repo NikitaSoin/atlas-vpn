@@ -34,6 +34,21 @@ function caInfo() {
   }
 }
 
+/** Строка подключения с замаскированным паролем — чтобы видеть, что реально попало в панель. */
+function maskedDbUrl() {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return { set: false };
+  const masked = raw.replace(/(:\/\/[^:\/]+:)([^@]*)(@)/, (_m, a, pw, c) => `${a}${"*".repeat(Math.min(pw.length, 12))}${c}`);
+  const suspicious = {
+    leadingOrTrailingSpace: raw !== raw.trim(),
+    hasQuotes: /["'«»]/.test(raw),
+    hasCyrillic: /[А-Яа-яЁё]/.test(raw),
+    hasNewline: /[\r\n]/.test(raw),
+    startsWithScheme: /^postgres(ql)?:\/\//.test(raw.trim()),
+  };
+  return { set: true, length: raw.length, masked, suspicious };
+}
+
 function smtpTarget(): { host: string; port: number } | null {
   const url = process.env.SMTP_URL;
   if (!url || url === "log") return null;
@@ -73,6 +88,7 @@ export async function GET(req: NextRequest) {
     telegram: telegramConfigured(),
     siteUrl: siteUrl(),
     ssl_ca: caInfo(),
+    databaseUrl: maskedDbUrl(),
     ms: Date.now() - t0,
   });
 }
