@@ -9,7 +9,7 @@ export const brand = {
   heroTitle: "Интернет без лишнего",
   description:
     "Быстрый доступ к любимым сайтам и сервисам на iPhone, Android, Mac и Windows.",
-  supportTelegram: "https://t.me/irek_vpn_support",
+  supportTelegram: "https://t.me/irek_vpn",
   supportEmail: "help@example.com",
   domain: "irekvpn.example.com",
 } as const;

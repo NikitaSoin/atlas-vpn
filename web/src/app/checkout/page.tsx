@@ -29,7 +29,7 @@ export default async function CheckoutPage({
           <span className="text-2xl font-semibold">{plan.price} ₽</span>
         </div>
         <p className="mt-1 text-sm text-muted">
-          {plan.perMonth} ₽ в месяц · 1 устройство
+          {plan.perMonth} ₽ в месяц · все ваши устройства
         </p>
 
         <form action="/api/checkout" method="POST" className="mt-6 space-y-4">
