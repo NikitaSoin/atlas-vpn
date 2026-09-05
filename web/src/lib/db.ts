@@ -163,8 +163,24 @@ type PgRow = Record<string, unknown>;
  * распарсенные из строки, перекрывают явный `ssl`, а нам нужен именно он.
  * Без DATABASE_SSL_CA строка используется как есть.
  */
+/**
+ * Панель хостинга при вставке многострочного PEM может потерять переводы
+ * строк или заменить их на литеральные «\n». Восстанавливаем каноничный
+ * вид: заголовки на своих строках, base64 по 64 символа. Принимаем и
+ * вариант, когда в переменной лежит только base64 сертификата без заголовков.
+ */
+export function normalizePem(raw: string): string {
+  const text = raw.replace(/\\n/g, "\n").trim();
+  const blocks = [...text.matchAll(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/g)];
+  const wrap = (label: string, body: string) =>
+    `-----BEGIN ${label}-----\n${body.replace(/[^A-Za-z0-9+/=]/g, "").replace(/(.{64})/g, "$1\n").trim()}\n-----END ${label}-----`;
+  if (blocks.length === 0) return wrap("CERTIFICATE", text);
+  return blocks.map((m) => wrap(m[1], m[2])).join("\n");
+}
+
 function pgConfig(url: string) {
-  const ca = process.env.DATABASE_SSL_CA?.trim();
+  const rawCa = process.env.DATABASE_SSL_CA?.trim();
+  const ca = rawCa ? normalizePem(rawCa) : "";
   if (!ca) return { connectionString: url };
   const u = new URL(url);
   u.searchParams.delete("sslmode");

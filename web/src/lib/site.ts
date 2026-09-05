@@ -1,6 +1,8 @@
 /** Публичный адрес сайта — для ссылок в письмах и сообщениях бота. */
 export function siteUrl(): string {
-  return (process.env.SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const raw = (process.env.SITE_URL ?? "http://localhost:3000").trim().replace(/\/$/, "");
+  // В панели адрес легко вписать без схемы — тогда ссылки в письмах не кликаются.
+  return /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
 }
 
 /**

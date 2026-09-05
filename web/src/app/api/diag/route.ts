@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sameCode } from "@/lib/admin";
-import { getStore, usingMemoryStore } from "@/lib/db";
+import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
+import { X509Certificate } from "node:crypto";
 import { getPanel, usingMockPanel } from "@/lib/panel";
 import { mailConfigured } from "@/lib/mail";
 import { telegramConfigured } from "@/lib/telegram";
@@ -19,6 +20,18 @@ function probe(host: string, port: number, ms = 5000): Promise<{ ok: boolean; er
     sock.once("connect", () => done(true));
     sock.once("error", (e) => done(false, e.message));
   });
+}
+
+/** Разбирается ли сертификат из DATABASE_SSL_CA после нормализации. */
+function caInfo() {
+  const raw = process.env.DATABASE_SSL_CA;
+  if (!raw) return { set: false };
+  try {
+    const cert = new X509Certificate(normalizePem(raw));
+    return { set: true, ok: true, subject: cert.subject.split("\n").pop(), validTo: cert.validTo };
+  } catch (e) {
+    return { set: true, ok: false, error: (e as Error).message, length: raw.length };
+  }
 }
 
 function smtpTarget(): { host: string; port: number } | null {
@@ -59,7 +72,7 @@ export async function GET(req: NextRequest) {
     smtpPort,
     telegram: telegramConfigured(),
     siteUrl: siteUrl(),
-    ssl_ca_set: Boolean(process.env.DATABASE_SSL_CA),
+    ssl_ca: caInfo(),
     ms: Date.now() - t0,
   });
 }
