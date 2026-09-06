@@ -31,6 +31,8 @@ export type SubRecord = {
   panelUrl: string | null;
   /** Прямой vless:// линк — для копирования и QR. */
   panelLink: string | null;
+  /** Числовой id пользователя в панели — продление без поискового запроса. */
+  panelUserId: string | null;
   /** chat_id пользователя в Telegram-боте, если привязал уведомления. */
   telegramChatId: string | null;
   /** Когда отправили «заканчивается через сутки» / «закончилась». */
@@ -43,6 +45,13 @@ export type SubPatch = Partial<
 >;
 
 export type ReminderKind = "expiring" | "expired";
+
+export type PanelAccess = {
+  panelToken: string;
+  panelUrl: string | null;
+  panelLink: string | null;
+  panelUserId: string | null;
+};
 
 export type TicketMessage = {
   author: "user" | "admin";
@@ -79,10 +88,11 @@ export interface Store {
   updateSub(token: string, patch: SubPatch): Promise<SubRecord | null>;
   setTelegram(token: string, chatId: string | null): Promise<void>;
   /** Сохранить выданный доступ целиком, чтобы страницы не ходили в панель. */
-  setPanelAccess(
-    token: string,
-    access: { panelToken: string; panelUrl: string | null; panelLink: string | null },
-  ): Promise<void>;
+  setPanelAccess(token: string, access: PanelAccess): Promise<void>;
+  /** Одноразовый ключ формы: защита от повторной отправки (двойной клик). */
+  createNonce(ttlMinutes: number): Promise<string>;
+  /** true — ключ был и погашен сейчас; false — уже использован или просрочен. */
+  consumeNonce(token: string): Promise<boolean>;
   /** Аккаунты, для которых доступ в панели ещё не заведён. */
   listUnprovisioned(limit: number): Promise<SubRecord[]>;
   /** Последние подписки — для админки. */
@@ -146,6 +156,11 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_token TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_used BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_url TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_link TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_user_id TEXT;
+CREATE TABLE IF NOT EXISTS nonces (
+  token       TEXT PRIMARY KEY,
+  expires_at  TIMESTAMPTZ NOT NULL
+);
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expiring TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expired TIMESTAMPTZ;
@@ -289,6 +304,7 @@ class PgStore implements Store {
       panelToken: (r.panel_token as string | null) ?? null,
       panelUrl: (r.panel_url as string | null) ?? null,
       panelLink: (r.panel_link as string | null) ?? null,
+      panelUserId: (r.panel_user_id as string | null) ?? null,
       telegramChatId: (r.telegram_chat_id as string | null) ?? null,
       notifiedExpiring: r.notified_expiring ? new Date(r.notified_expiring as string) : null,
       notifiedExpired: r.notified_expired ? new Date(r.notified_expired as string) : null,
@@ -339,14 +355,31 @@ class PgStore implements Store {
     return this.rowToSub(rows[0]);
   }
 
-  async setPanelAccess(
-    token: string,
-    access: { panelToken: string; panelUrl: string | null; panelLink: string | null },
-  ) {
+  async setPanelAccess(token: string, access: PanelAccess) {
     await this.q(
-      "UPDATE subscriptions SET panel_token = $2, panel_url = $3, panel_link = $4 WHERE token = $1",
-      [token, access.panelToken, access.panelUrl, access.panelLink],
+      `UPDATE subscriptions
+       SET panel_token = $2, panel_url = $3, panel_link = $4, panel_user_id = $5
+       WHERE token = $1`,
+      [token, access.panelToken, access.panelUrl, access.panelLink, access.panelUserId],
     );
+  }
+
+  async createNonce(ttlMinutes: number) {
+    const token = randomBytes(18).toString("base64url");
+    await this.q(
+      "INSERT INTO nonces (token, expires_at) VALUES ($1, now() + ($2 || ' minutes')::interval)",
+      [token, ttlMinutes],
+    );
+    await this.q("DELETE FROM nonces WHERE expires_at < now()");
+    return token;
+  }
+
+  async consumeNonce(token: string) {
+    const { rows } = await this.q(
+      "DELETE FROM nonces WHERE token = $1 AND expires_at > now() RETURNING token",
+      [token],
+    );
+    return rows.length > 0;
   }
 
   async listUnprovisioned(limit: number) {
@@ -505,6 +538,7 @@ class PgStore implements Store {
 class MemoryStore implements Store {
   private subs: SubRecord[] = [];
   private codes = new Map<string, { code: string; expiresAt: Date }>();
+  private nonces = new Map<string, Date>();
   private tickets: Ticket[] = [];
   private nextTicketId = 1;
   private events: (EventRecord & { createdAt: Date })[] = [];
@@ -542,6 +576,7 @@ class MemoryStore implements Store {
       panelToken: rec.panelToken ?? null,
       panelUrl: null,
       panelLink: null,
+      panelUserId: null,
       createdAt: new Date(),
       telegramChatId: null,
       notifiedExpiring: null,
@@ -561,12 +596,19 @@ class MemoryStore implements Store {
     if (sub.isTrial) sub.trialUsed = true;
     return sub;
   }
-  async setPanelAccess(
-    token: string,
-    access: { panelToken: string; panelUrl: string | null; panelLink: string | null },
-  ) {
+  async setPanelAccess(token: string, access: PanelAccess) {
     const sub = this.subs.find((s) => s.token === token);
     if (sub) Object.assign(sub, access);
+  }
+  async createNonce(ttlMinutes: number) {
+    const token = randomBytes(18).toString("base64url");
+    this.nonces.set(token, new Date(Date.now() + ttlMinutes * 60_000));
+    return token;
+  }
+  async consumeNonce(token: string) {
+    const exp = this.nonces.get(token);
+    this.nonces.delete(token);
+    return Boolean(exp && exp > new Date());
   }
   async listUnprovisioned(limit: number) {
     return this.subs.filter((s) => !s.panelToken && s.planId !== "none").slice(0, limit);

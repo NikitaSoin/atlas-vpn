@@ -71,6 +71,7 @@ export async function provisionPanel(sub: SubRecord): Promise<SubRecord> {
       panelToken: panelSub.token,
       panelUrl: panelSub.url ?? null,
       panelLink: panelSub.rawLink ?? null,
+      panelUserId: panelSub.userId ?? null,
     };
     await getStore().setPanelAccess(sub.token, access);
     return { ...sub, ...access };
@@ -141,10 +142,14 @@ export async function applyPayment(
       })) ?? existing;
     if (existing.panelToken) {
       try {
-        await panel.updateSubscription(existing.panelToken, {
-          expiresAt: panelExpiry(expiresAt, false),
-          trafficLimitBytes: 0, // после оплаты лимит триала снимается
-        });
+        await panel.updateSubscription(
+          existing.panelToken,
+          {
+            expiresAt: panelExpiry(expiresAt, false),
+            trafficLimitBytes: 0, // после оплаты лимит триала снимается
+          },
+          existing.panelUserId,
+        );
       } catch (e) {
         // Срок в базе уже новый; панель догоним при следующей синхронизации.
         console.error("[panel] extend failed for", email, (e as Error).message);

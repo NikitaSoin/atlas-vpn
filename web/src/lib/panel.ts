@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
  */
 
 export type Subscription = {
-  /** Идентификатор пользователя в панели (uuid) — нужен для продления. */
+  /** Числовой id пользователя в панели — им же идёт продление (PATCH). */
   userId: string;
   /** shortUuid — он же хвост подписочной ссылки и наш токен в БД. */
   token: string;
@@ -47,8 +47,16 @@ export type UpdateInput = {
 export interface Panel {
   createSubscription(input: CreateInput): Promise<Subscription>;
   getSubscription(token: string): Promise<Subscription | null>;
-  /** Новый срок и (опционально) лимит. Сайт — источник правды по датам. */
-  updateSubscription(token: string, input: UpdateInput): Promise<Subscription | null>;
+  /**
+   * Новый срок и (опционально) лимит. Сайт — источник правды по датам.
+   * `userId` — числовой id из панели: если он известен, лишний поисковый
+   * запрос не делается, и продление укладывается в один сетевой вызов.
+   */
+  updateSubscription(
+    token: string,
+    input: UpdateInput,
+    userId?: string | null,
+  ): Promise<Subscription | null>;
 }
 
 /**
@@ -215,7 +223,12 @@ class RemnawavePanel implements Panel {
     return undefined;
   }
 
-  private async toSubscription(u: PanelUser): Promise<Subscription> {
+  /**
+   * `withLink` — тянуть ли vless://-линк отдельным запросом. Нужен только
+   * при первой выдаче доступа: дальше он лежит в базе. На продлении лишний
+   * поход за ним удваивал время оплаты.
+   */
+  private async toSubscription(u: PanelUser, withLink: boolean): Promise<Subscription> {
     return {
       userId: String(u.id),
       token: u.shortUuid,
@@ -223,7 +236,7 @@ class RemnawavePanel implements Panel {
       // если сайт ходит через ретранслятор, клиент получит тот же путь и
       // сможет обновлять подписку даже там, где прямой адрес недоступен.
       url: `${this.activeBase}/api/sub/${u.shortUuid}`,
-      rawLink: await this.fetchRawLink(u.shortUuid),
+      rawLink: withLink ? await this.fetchRawLink(u.shortUuid) : undefined,
       expiresAt: new Date(u.expireAt),
     };
   }
@@ -242,33 +255,42 @@ class RemnawavePanel implements Panel {
         email,
       }),
     });
-    return this.toSubscription(created.response);
+    return this.toSubscription(created.response, true);
   }
 
-  async getSubscription(token: string) {
+  async getSubscription(token: string, withLink = true) {
     try {
       const found = await this.request<{ response: PanelUser }>(
         `/api/users/by-short-uuid/${token}`,
       );
-      return await this.toSubscription(found.response);
+      return await this.toSubscription(found.response, withLink);
     } catch {
       return null;
     }
   }
 
-  async updateSubscription(token: string, { expiresAt, trafficLimitBytes }: UpdateInput) {
-    const current = await this.getSubscription(token);
-    if (!current) return null;
+  async updateSubscription(
+    token: string,
+    { expiresAt, trafficLimitBytes }: UpdateInput,
+    userId?: string | null,
+  ) {
+    // id знаем — идём сразу на PATCH, иначе сначала ищем пользователя.
+    let id = userId ? Number(userId) : NaN;
+    if (!Number.isFinite(id)) {
+      const current = await this.getSubscription(token, false);
+      if (!current) return null;
+      id = Number(current.userId);
+    }
     const updated = await this.request<{ response: PanelUser }>("/api/users", {
       method: "PATCH",
       body: JSON.stringify({
-        id: Number(current.userId),
+        id,
         status: "ACTIVE",
         expireAt: expiresAt.toISOString(),
         ...(trafficLimitBytes !== undefined ? { trafficLimitBytes } : {}),
       }),
     });
-    return this.toSubscription(updated.response);
+    return this.toSubscription(updated.response, false);
   }
 }
 

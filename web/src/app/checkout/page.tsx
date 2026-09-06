@@ -2,6 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { findPlan, plans } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
+import { getStore } from "@/lib/db";
+import CheckoutForm from "./checkout-form";
+
+/** Ключ формы живёт достаточно, чтобы человек успел подумать. */
+const NONCE_TTL_MIN = 60;
+
+export const dynamic = "force-dynamic";
 
 export default async function CheckoutPage({
   searchParams,
@@ -11,14 +18,16 @@ export default async function CheckoutPage({
   const { plan: planId, email: emailParam } = await searchParams;
   const plan = findPlan(planId ?? "") ?? plans.find((p) => p.popular);
   if (!plan) notFound();
-  // Email берём из кабинета, если человек уже подключался в этом браузере.
+
+  // Почту берём из кабинета, если человек уже вошёл в этом браузере.
   const sub = await currentSub();
-  const email = emailParam ?? sub?.email;
+  const email = sub?.email ?? emailParam ?? "";
+  const nonce = await getStore().createNonce(NONCE_TTL_MIN);
 
   return (
     <main className="mx-auto max-w-md px-5 py-16">
-      <Link href="/#tarify" className="text-sm text-muted hover:text-fg">
-        ← Другой срок
+      <Link href={sub ? "/account" : "/#tarify"} className="text-sm text-muted hover:text-fg">
+        ← {sub ? "В личный кабинет" : "Другой срок"}
       </Link>
 
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">Оплата</h1>
@@ -32,42 +41,22 @@ export default async function CheckoutPage({
           {plan.perMonth} ₽ в месяц · все ваши устройства
         </p>
 
-        <form action="/api/checkout" method="POST" className="mt-6 space-y-4">
-          <input type="hidden" name="plan" value={plan.id} />
-          <label className="block">
-            <span className="text-sm text-muted">Email для доступа и чека</span>
-            <input
-              type="email"
-              name="email"
-              required
-              defaultValue={email ?? ""}
-              placeholder="you@example.com"
-              className="mt-1.5 w-full rounded-xl border border-line bg-ink px-4 py-2.5 outline-none placeholder:text-muted/60 focus:border-accent"
-            />
-          </label>
-          <label className="flex items-start gap-2.5 text-sm text-muted">
-            <input
-              type="checkbox"
-              name="autoRenew"
-              defaultChecked
-              className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
-            />
-            <span>
-              Автопродление — доступ не прервётся, отключить можно в любой
-              момент
-            </span>
-          </label>
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-primary px-4 py-3 font-medium text-white transition hover:brightness-110"
-          >
-            Оплатить {plan.price} ₽
-          </button>
-        </form>
+        <CheckoutForm
+          planId={plan.id}
+          price={plan.price}
+          nonce={nonce}
+          defaultEmail={email}
+          emailLocked={Boolean(sub)}
+        />
 
-        <p className="mt-4 text-center text-xs text-muted">
-          Если с этим email уже есть доступ (в том числе пробный) — срок просто
-          прибавится к остатку, заново настраивать ничего не придётся.
+        <p className="mt-4 text-center text-xs leading-relaxed text-muted">
+          После нажатия откроется защищённая страница оплаты Т-Кассы — это
+          интернет-эквайринг Т-Бизнеса. Там можно заплатить картой или через
+          СБП. Данные карты остаются у банка, мы их не видим и не храним.
+        </p>
+        <p className="mt-2 text-center text-xs text-muted">
+          Если доступ у вас уже есть, в том числе пробный, срок прибавится к
+          остатку. Настраивать заново ничего не нужно.
         </p>
       </div>
     </main>
