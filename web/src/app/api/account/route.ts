@@ -17,6 +17,23 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
+  if (action === "two_factor") {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    const store = getStore();
+    const sub = token ? await store.findSubByToken(token) : null;
+    if (!sub) return NextResponse.redirect(absoluteUrl(req, "/start?mode=login"), { status: 303 });
+    const enable = form.get("enable") === "on";
+    // Без пароля второй шаг бессмысленен: входить было бы нечем на первом шаге.
+    if (enable && !sub.passwordHash) {
+      return NextResponse.redirect(absoluteUrl(req, "/account?err=nopass"), { status: 303 });
+    }
+    await store.setTwoFactor(sub.token, enable);
+    await track(req.headers, enable ? "2fa_enabled" : "2fa_disabled");
+    return NextResponse.redirect(absoluteUrl(req, `/account?2fa=${enable ? "on" : "off"}`), {
+      status: 303,
+    });
+  }
+
   if (action === "change_password") {
     const token = req.cookies.get(SESSION_COOKIE)?.value;
     const store = getStore();

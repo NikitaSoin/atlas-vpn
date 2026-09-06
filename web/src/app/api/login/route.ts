@@ -4,6 +4,8 @@ import { getStore } from "@/lib/db";
 import { setSession } from "@/lib/session";
 import { verifyPassword } from "@/lib/password";
 import { track } from "@/lib/analytics";
+import { sendMail } from "@/lib/mail";
+import { brand } from "@/lib/brand";
 
 /**
  * Вход по почте и паролю.
@@ -15,6 +17,9 @@ import { track } from "@/lib/analytics";
  */
 const DUMMY_HASH =
   "scrypt$00000000000000000000000000000000$" + "0".repeat(128);
+
+/** Столько же живёт код подтверждения при регистрации. */
+const CODE_TTL_MIN = 10;
 
 export async function POST(req: NextRequest) {
   const form = await req.formData();
@@ -29,6 +34,29 @@ export async function POST(req: NextRequest) {
   if (!ok || !sub) {
     await track(req.headers, "login_failed");
     return NextResponse.redirect(absoluteUrl(req, "/start?mode=login&err=bad"), { status: 303 });
+  }
+
+  // Двухшаговый вход: пароль верный, но сессию не открываем, пока человек не
+  // введёт код из письма. Сам факт включения второго шага скрывать незачем —
+  // пароль уже проверен.
+  if (sub.twoFactor) {
+    const code = await getStore().createEmailCode(sub.email, CODE_TTL_MIN, { kind: "2fa" });
+    const sent = await sendMail(
+      sub.email,
+      `${code} — код для входа в ${brand.name}`,
+      `Ваш код для входа: ${code}\n\nОн действует ${CODE_TTL_MIN} минут.\n` +
+        `Если вы не входили в аккаунт — смените пароль: кто-то знает его.`,
+    );
+    if (!sent) {
+      return NextResponse.redirect(absoluteUrl(req, "/start?mode=login&err=send"), {
+        status: 303,
+      });
+    }
+    await track(req.headers, "login_2fa_code");
+    return NextResponse.redirect(
+      absoluteUrl(req, `/start/verify?email=${encodeURIComponent(sub.email)}&mode=2fa`),
+      { status: 303 },
+    );
   }
 
   await track(req.headers, "login");

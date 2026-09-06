@@ -29,8 +29,10 @@ export default async function StartPage({
 }) {
   if (await currentSub()) redirect("/account");
   const sp = await searchParams;
+  // По умолчанию показываем регистрацию: на /start приводит кнопка с лендинга,
+  // а вход — по явной ссылке из шапки.
   const mode: Mode =
-    sp.mode === "signup" ? "signup" : sp.mode === "reset" ? "reset" : "login";
+    sp.mode === "login" ? "login" : sp.mode === "reset" ? "reset" : "signup";
 
   const errors: Record<string, string> = {
     email: "Похоже, почта с опечаткой — проверьте.",

@@ -81,11 +81,17 @@ function ChooseAccess({ email, trialUsed, err }: { email: string; trialUsed: boo
 export default async function AccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; err?: string; paid?: string; pass?: string }>;
+  searchParams: Promise<{
+    new?: string;
+    err?: string;
+    paid?: string;
+    pass?: string;
+    "2fa"?: string;
+  }>;
 }) {
   const sub = await currentSub();
-  if (!sub) redirect("/start");
-  const { new: isNew, err, paid, pass } = await searchParams;
+  if (!sub) redirect("/start?mode=login");
+  const { new: isNew, err, paid, pass, "2fa": twoFactorResult } = await searchParams;
   // Банк возвращает человека на главную без номера заказа — смотрим сами,
   // чем закончился его последний платёж.
   const lastPay = await getStore().lastPayment(sub.email);
@@ -219,7 +225,10 @@ export default async function AccountPage({
           </div>
           <div>
             <dt className="text-muted">Вход</dt>
-            <dd>{sub.passwordHash ? "по почте и паролю" : "по коду из письма"}</dd>
+            <dd>
+              {sub.passwordHash ? "по почте и паролю" : "по коду из письма"}
+              {sub.twoFactor && " + код на почту"}
+            </dd>
           </div>
         </dl>
       </section>
@@ -284,6 +293,39 @@ export default async function AccountPage({
             className="rounded-xl border border-line px-4 py-2.5 text-sm transition hover:border-accent sm:col-span-3 sm:justify-self-start"
           >
             Сохранить пароль
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
+        <h2 className="font-medium">Вход в два шага</h2>
+        <p className="mt-1.5 text-sm text-muted">
+          {sub.twoFactor
+            ? "Включён: после пароля мы присылаем код на почту. Даже зная пароль, войти без доступа к вашей почте не получится."
+            : "Если включить, после пароля мы будем присылать код на почту. Пароль в чужих руках перестаёт быть достаточным для входа."}
+        </p>
+        {twoFactorResult === "on" && <p className="mt-2 text-sm text-good">Вход в два шага включён.</p>}
+        {twoFactorResult === "off" && (
+          <p className="mt-2 text-sm text-muted">Вход в два шага выключен.</p>
+        )}
+        {err === "nopass" && (
+          <p className="mt-2 text-sm text-bad">
+            Сначала задайте пароль — без него второй шаг не имеет смысла.
+          </p>
+        )}
+        <form action="/api/account" method="POST" className="mt-4">
+          <input type="hidden" name="action" value="two_factor" />
+          {!sub.twoFactor && <input type="hidden" name="enable" value="on" />}
+          <button
+            type="submit"
+            disabled={!sub.passwordHash && !sub.twoFactor}
+            className={`rounded-xl px-4 py-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              sub.twoFactor
+                ? "border border-line hover:border-accent"
+                : "bg-primary font-medium text-white hover:brightness-110"
+            }`}
+          >
+            {sub.twoFactor ? "Выключить" : "Включить вход в два шага"}
           </button>
         </form>
       </section>

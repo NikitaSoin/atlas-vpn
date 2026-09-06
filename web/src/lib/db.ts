@@ -23,6 +23,8 @@ export type SubRecord = {
   trialUsed: boolean;
   /** Хеш пароля (scrypt). null — аккаунт создан до введения паролей. */
   passwordHash: string | null;
+  /** Двухшаговый вход: после пароля запрашивается код из письма. */
+  twoFactor: boolean;
   /**
    * Идентификатор пользователя в VPN-панели (shortUuid). null — доступ ещё
    * не заведён: панель была недоступна при регистрации, планировщик
@@ -181,6 +183,8 @@ export interface Store {
   ): Promise<{ passwordHash: string | null; kind: string } | null>;
   /** Задать или сменить пароль аккаунта. */
   setPassword(token: string, passwordHash: string): Promise<void>;
+  /** Включить или выключить двухшаговый вход. */
+  setTwoFactor(token: string, enabled: boolean): Promise<void>;
   createTicket(email: string, body: string): Promise<Ticket>;
   getTicketByToken(token: string): Promise<Ticket | null>;
   getTicketById(id: number): Promise<Ticket | null>;
@@ -269,6 +273,7 @@ CREATE TABLE IF NOT EXISTS email_codes (
 ALTER TABLE email_codes ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE email_codes ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'signup';
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS two_factor BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE TABLE IF NOT EXISTS tickets (
   id          SERIAL PRIMARY KEY,
   token       TEXT UNIQUE NOT NULL,
@@ -401,6 +406,7 @@ class PgStore implements Store {
       isTrial: Boolean(r.is_trial),
       trialUsed: Boolean(r.trial_used),
       passwordHash: (r.password_hash as string | null) ?? null,
+      twoFactor: Boolean(r.two_factor),
       panelToken: (r.panel_token as string | null) ?? null,
       panelUrl: (r.panel_url as string | null) ?? null,
       panelLink: (r.panel_link as string | null) ?? null,
@@ -699,6 +705,10 @@ class PgStore implements Store {
     ]);
   }
 
+  async setTwoFactor(token: string, enabled: boolean) {
+    await this.q("UPDATE subscriptions SET two_factor = $2 WHERE token = $1", [token, enabled]);
+  }
+
   private async hydrateTicket(r: PgRow): Promise<Ticket> {
     const { rows } = await this.q(
       "SELECT author, body, created_at FROM ticket_messages WHERE ticket_id = $1 ORDER BY id",
@@ -805,6 +815,7 @@ class MemoryStore implements Store {
     const full: SubRecord = {
       ...rec,
       passwordHash: rec.passwordHash ?? null,
+      twoFactor: false,
       trialUsed: rec.isTrial,
       panelToken: rec.panelToken ?? null,
       panelUrl: null,
@@ -941,6 +952,10 @@ class MemoryStore implements Store {
   async setPassword(token: string, passwordHash: string) {
     const sub = this.subs.find((s) => s.token === token);
     if (sub) sub.passwordHash = passwordHash;
+  }
+  async setTwoFactor(token: string, enabled: boolean) {
+    const sub = this.subs.find((s) => s.token === token);
+    if (sub) sub.twoFactor = enabled;
   }
   async createTicket(email: string, body: string) {
     const ticket: Ticket = {

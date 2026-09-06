@@ -33,6 +33,17 @@ export async function POST(req: NextRequest) {
   let sub = await store.findSubByEmail(email);
   let isNew = false;
 
+  // Второй шаг входа: аккаунт уже есть, пароль проверен на первом шаге.
+  if (pending.kind === "2fa") {
+    if (!sub) {
+      return NextResponse.redirect(absoluteUrl(req, "/start?mode=login"), { status: 303 });
+    }
+    await track(req.headers, "login");
+    const res = NextResponse.redirect(absoluteUrl(req, "/account"), { status: 303 });
+    setSession(res, sub.token);
+    return res;
+  }
+
   if (!sub) {
     if (pending.kind === "reset") {
       // Восстанавливать нечего: аккаунт не найден. Ведём на регистрацию.

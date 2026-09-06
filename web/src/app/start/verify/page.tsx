@@ -13,15 +13,20 @@ export default async function VerifyPage({
   return (
     <main className="mx-auto max-w-md px-5 py-16">
       <Link
-        href={`/start?mode=${mode ?? "signup"}&email=${encodeURIComponent(email)}`}
+        href={`/start?mode=${mode === "2fa" ? "login" : (mode ?? "signup")}&email=${encodeURIComponent(email)}`}
         className="text-sm text-muted hover:text-fg"
       >
-        ← Другой email
+        ← {mode === "2fa" ? "Отменить вход" : "Другой email"}
       </Link>
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">Код из письма</h1>
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">
+        {mode === "2fa" ? "Подтвердите вход" : "Код из письма"}
+      </h1>
       <p className="mt-2 text-muted">
-        Отправили шесть цифр на <span className="text-fg">{email}</span>. Если письма нет
-        минуту — загляните в «Спам».
+        {mode === "2fa"
+          ? "Пароль верный. Остался второй шаг: введите код, который мы отправили на "
+          : "Отправили шесть цифр на "}
+        <span className="text-fg">{email}</span>
+        {mode === "2fa" ? "." : ". Если письма нет минуту — загляните в «Спам»."}
       </p>
 
       <form
@@ -66,10 +71,10 @@ export default async function VerifyPage({
       <p className="mt-4 text-center text-sm text-muted">
         Не пришло письмо?{" "}
         <Link
-          href={`/start?mode=${mode ?? "signup"}&email=${encodeURIComponent(email)}`}
+          href={`/start?mode=${mode === "2fa" ? "login" : (mode ?? "signup")}&email=${encodeURIComponent(email)}`}
           className="text-accent-ink hover:underline"
         >
-          Запросить код заново
+          {mode === "2fa" ? "Войти заново" : "Запросить код заново"}
         </Link>
       </p>
     </main>

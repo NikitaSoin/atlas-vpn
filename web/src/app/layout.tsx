@@ -67,7 +67,7 @@ export default async function RootLayout({
                 Поддержка
               </Link>
               <Link
-                href={sub ? "/account" : "/start"}
+                href={sub ? "/account" : "/start?mode=login"}
                 className={`rounded-full border px-3 py-1 text-sm ${
                   state === "grace" || state === "expired"
                     ? "border-bad/40 text-bad"
