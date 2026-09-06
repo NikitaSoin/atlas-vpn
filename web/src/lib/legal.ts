@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { getCompany } from "./brand";
+import { getCompany, type Company } from "./brand";
+import { siteUrl } from "./site";
 
 /**
  * Юридические документы сайта. Тексты лежат файлами в `src/content/legal`,
@@ -22,30 +23,25 @@ export type LegalDocId = keyof typeof LEGAL_DOCS;
 
 export const isLegalDoc = (v: string): v is LegalDocId => v in LEGAL_DOCS;
 
-/** Подстановка реквизитов ИП в шаблонные места документа. */
-function fillCompany(text: string): string {
-  const company = getCompany();
-  const map: Record<string, string> = {
-    "[ФИО]": company.name,
-    "[адрес почты поддержки]": company.email,
-    "[адрес почты для жалоб]": company.email,
-    "[адрес почты]": company.email,
-    "[адрес канала поддержки]": "@irek_vpn",
-  };
-  let out = text;
-  for (const [needle, value] of Object.entries(map)) {
-    if (value) out = out.split(needle).join(value);
-  }
-  if (company.ogrnip) out = out.replace(/ОГРНИП `\[…\]`/g, `ОГРНИП \`${company.ogrnip}\``);
-  if (company.inn) out = out.replace(/ИНН `\[…\]`/g, `ИНН \`${company.inn}\``);
-  return out.replace("{{РЕКВИЗИТЫ}}", requisitesBlock());
+/** Дата, на которую документ действует: меняется вместе с версией. */
+const EFFECTIVE_FROM = "6 сентября 2026 г.";
+
+/** Краткие сведения об операторе — для первого раздела политики. */
+function operatorBlock(c: Company): string {
+  const parts = [
+    `${c.form} ${c.name}`,
+    c.ogrnip && `ОГРНИП ${c.ogrnip}`,
+    c.inn && `ИНН ${c.inn}`,
+    c.address && `адрес: ${c.address}`,
+    c.email && `электронная почта: ${c.email}`,
+  ].filter(Boolean);
+  return parts.length > 1 ? parts.join(", ") + "." : "Реквизиты будут указаны после регистрации сервиса.";
 }
 
 /** Блок реквизитов для последнего раздела оферты. */
-function requisitesBlock(): string {
-  const c = getCompany();
+function requisitesBlock(c: Company): string {
   if (!c.name) return "Реквизиты будут указаны после регистрации сервиса.";
-  const lines = [
+  return [
     `${c.form} ${c.name}`,
     c.ogrnip && `ОГРНИП: ${c.ogrnip}`,
     c.inn && `ИНН: ${c.inn}`,
@@ -56,13 +52,56 @@ function requisitesBlock(): string {
     c.bank.bik && `БИК: ${c.bank.bik}`,
     c.bank.corr && `Корреспондентский счёт: ${c.bank.corr}`,
     c.bank.inn && `ИНН банка: ${c.bank.inn}`,
-  ].filter(Boolean);
-  return lines.join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Пункт об уведомлении Роскомнадзора о трансграничной передаче.
+ *
+ * Утверждать, что уведомление подано, пока оно не подано, нельзя: это было бы
+ * ложным сведением в публичном документе. Поэтому текст появляется только
+ * после того, как в RKN_TRANSFER_NOTICE записаны дата и номер уведомления.
+ * До этого документ честно говорит о самом факте передачи, без заявлений о
+ * выполненных формальностях.
+ */
+function rknNoticeBlock(): string {
+  const notice = process.env.RKN_TRANSFER_NOTICE?.trim();
+  return notice
+    ? `7.2. Оператор направил в Роскомнадзор уведомление о намерении осуществлять
+трансграничную передачу персональных данных в порядке ст. 12 152-ФЗ
+(${notice}).`
+    : `7.2. Порядок трансграничной передачи определяется ст. 12 152-ФЗ.`;
+}
+
+/** Подстановка реквизитов и значений в шаблонные места документа. */
+function fillTemplate(text: string, docId: LegalDocId): string {
+  const company = getCompany();
+  return text
+    .split("{{РЕДАКЦИЯ}}")
+    .join(`Редакция ${LEGAL_DOCS[docId].version} от ${EFFECTIVE_FROM}`)
+    .split("{{САЙТ}}")
+    .join(siteUrl())
+    .split("{{ПОЧТА}}")
+    .join(company.email || "адрес будет указан после запуска")
+    .split("{{ОПЕРАТОР}}")
+    .join(operatorBlock(company))
+    .split("{{РЕКВИЗИТЫ}}")
+    .join(requisitesBlock(company))
+    .split("{{УВЕДОМЛЕНИЕ_РКН}}")
+    .join(rknNoticeBlock())
+    .split("{{ИСПОЛНИТЕЛЬ}}")
+    .join(
+      company.name
+        ? `${company.form.toLowerCase()} ${company.name} (ОГРНИП ${company.ogrnip}, ИНН ${company.inn})`
+        : "индивидуальный предприниматель, реквизиты которого указаны в разделе 17",
+    );
 }
 
 export async function readLegalDoc(id: LegalDocId): Promise<string> {
   const file = path.join(process.cwd(), "src/content/legal", LEGAL_DOCS[id].file);
-  return fillCompany(await readFile(file, "utf8"));
+  return fillTemplate(await readFile(file, "utf8"), id);
 }
 
 /** Строка версий для записи в базу вместе с акцептом. */
