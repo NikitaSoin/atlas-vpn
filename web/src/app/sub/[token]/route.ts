@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPanel } from "@/lib/panel";
+import { siteUrl } from "@/lib/site";
+import { brand } from "@/lib/brand";
 
 /**
  * Подписка на нашем домене.
@@ -23,9 +25,7 @@ const PASS_THROUGH = [
   "content-type",
   "profile-title",
   "profile-update-interval",
-  "profile-web-page-url",
   "subscription-userinfo",
-  "support-url",
   "announce",
 ];
 
@@ -59,6 +59,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
       if (v) headers.set(h, v);
     }
     if (!headers.has("content-type")) headers.set("content-type", "text/plain; charset=utf-8");
+    // Панель подставляет сюда свой прямой адрес, недоступный из России, и
+    // приложение может на нём споткнуться. Показываем свой кабинет.
+    headers.set("profile-web-page-url", `${siteUrl()}/account`);
+    headers.set("support-url", brand.supportTelegram);
+    headers.set("profile-title", `base64:${Buffer.from(brand.name, "utf8").toString("base64")}`);
     headers.set("cache-control", "no-store");
     return new NextResponse(body, { status: 200, headers });
   } catch (e) {
