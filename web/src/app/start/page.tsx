@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { brand } from "@/lib/brand";
 import { TRIAL_DAYS, TRIAL_TRAFFIC_GB } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
+import ConsentForm from "./consent-form";
 
 /**
  * Вход и регистрация — одна страница и один сценарий: почта → код → кабинет.
@@ -40,6 +41,12 @@ export default async function StartPage({
         {err === "send" && (
           <p className="text-sm text-bad">Не удалось отправить письмо. Попробуйте ещё раз через минуту.</p>
         )}
+        {err === "consent" && (
+          <p className="text-sm text-bad">
+            Чтобы продолжить, нужно принять оферту, правила и согласиться на
+            обработку данных.
+          </p>
+        )}
         {err === "nomail" && (
           <p className="text-sm text-bad">
             Вход временно недоступен. Напишите в{" "}
@@ -49,24 +56,7 @@ export default async function StartPage({
             .
           </p>
         )}
-        <label className="block">
-          <span className="text-sm text-muted">Почта</span>
-          <input
-            type="email"
-            name="email"
-            required
-            autoFocus
-            defaultValue={email ?? ""}
-            placeholder="you@example.com"
-            className="mt-1.5 w-full rounded-xl border border-line bg-ink px-4 py-2.5 outline-none placeholder:text-muted/60 focus:border-accent"
-          />
-        </label>
-        <button
-          type="submit"
-          className="w-full rounded-xl bg-primary px-4 py-3 font-medium text-white transition hover:brightness-110"
-        >
-          Получить код
-        </button>
+        <ConsentForm defaultEmail={email ?? ""} />
       </form>
 
       <p className="mt-4 text-center text-sm text-muted">

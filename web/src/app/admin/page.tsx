@@ -3,6 +3,24 @@ import { adminConfigured, isAdmin } from "@/lib/admin";
 import { getStore } from "@/lib/db";
 import { formatDate, stateLabel, subState } from "@/lib/subscription";
 
+/**
+ * Воронка: от посещения сайта до оплаты. Считается по своим событиям
+ * (таблица `events`), сторонних счётчиков на сайте нет.
+ */
+const FUNNEL: { event: string; label: string }[] = [
+  { event: "page_view", label: "Открыли сайт" },
+  { event: "cta_click", label: "Нажали «попробовать»" },
+  { event: "tariff_click", label: "Выбрали тариф" },
+  { event: "code_sent", label: "Запросили код" },
+  { event: "account_created", label: "Подтвердили почту" },
+  { event: "trial_started", label: "Включили пробный период" },
+  { event: "client_install_click", label: "Пошли ставить приложение" },
+  { event: "config_import_click", label: "Импортировали конфигурацию" },
+  { event: "checkout_new", label: "Начали оплату" },
+  { event: "payment_granted", label: "Оплатили" },
+];
+
+
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage({
@@ -69,6 +87,12 @@ export default async function AdminPage({
   }
   const open = tickets.filter((t) => t.status === "open");
   const today = new Map(stats1.map((s) => [s.event, s.count]));
+  const byEvent = new Map(stats7.map((s) => [s.event, s.count]));
+  const funnelTop = byEvent.get("page_view") ?? 0;
+  const funnel = FUNNEL.map((step) => {
+    const count = byEvent.get(step.event) ?? 0;
+    return { ...step, count, share: funnelTop > 0 ? Math.round((count / funnelTop) * 100) : 0 };
+  });
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-16">
@@ -76,7 +100,32 @@ export default async function AdminPage({
 
       <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
         <h2 className="font-medium">
-          Аналитика <span className="text-sm text-muted">· живые люди, боты отфильтрованы</span>
+          Воронка <span className="text-sm text-muted">· за 7 дней, боты отфильтрованы</span>
+        </h2>
+        <div className="mt-3 space-y-1.5">
+          {funnel.map((step) => (
+            <div key={step.event} className="flex items-center gap-3 text-sm">
+              <span className="w-56 shrink-0 text-muted">{step.label}</span>
+              <span className="w-12 shrink-0 text-right font-medium">{step.count}</span>
+              <span className="w-12 shrink-0 text-right text-xs text-muted">{step.share}%</span>
+              <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
+                <span
+                  className="block h-full rounded-full bg-accent"
+                  style={{ width: `${step.share}%` }}
+                />
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-muted">
+          Доли считаются от числа открытий сайта. Один человек может дать несколько
+          событий, поэтому это воронка по действиям, а не по уникальным людям.
+        </p>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
+        <h2 className="font-medium">
+          Все события <span className="text-sm text-muted">· живые люди, боты отфильтрованы</span>
         </h2>
         {stats7.length === 0 ? (
           <p className="mt-2 text-sm text-muted">Событий пока нет.</p>

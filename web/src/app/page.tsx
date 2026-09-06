@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import TrackedLink from "./tracked-link";
 import { brand } from "@/lib/brand";
 import { plans, TRIAL_DAYS } from "@/lib/plans";
 import { platformLabels, platformOrder } from "@/lib/clients";
@@ -15,7 +16,7 @@ const steps = [
   },
   {
     title: "Нажмите одну кнопку",
-    text: "Настройки подставятся автоматически. Дальше — просто переключатель «вкл».",
+    text: "Настройки подставятся автоматически. Дальше — просто переключатель «вкл», и соединение зашифровано.",
   },
 ];
 
@@ -26,11 +27,11 @@ const faq = [
   },
   {
     q: "Почему нужно ставить отдельное приложение?",
-    a: "Ни один сайт не может включить VPN сам — операционные системы iOS, Android, Windows и macOS запрещают это из соображений безопасности. Приложение обязательно у любого VPN-сервиса без исключений. Мы сделали так, что настройка занимает один тап: приложение получает все параметры по ссылке, вручную ничего вводить не нужно.",
+    a: "Ни один сайт не может включить VPN сам — операционные системы iOS, Android, Windows и macOS запрещают это из соображений безопасности. Приложение обязательно у любого VPN-сервиса без исключений. Мы сделали так, что настройка занимает один тап: приложение получает все параметры по ссылке, вручную ничего вводить не нужно. Само приложение разработано другой компанией и распространяется независимо от нас.",
   },
   {
-    q: "Нужно ли менять регион App Store?",
-    a: "Нет. Приложение INCY, которое мы рекомендуем, доступно в российском App Store и в Google Play — ставится как обычное приложение. Если захотите другой клиент из тех, что мы предлагаем на выбор, может понадобиться бесплатная смена региона — инструкция будет на экране после оплаты.",
+    q: "Что именно делает сервис?",
+    a: "Шифрует соединение между вашим устройством и нашим сервером. Пока вы подключены, ваш оператор связи, владелец сети Wi-Fi и другие посредники видят только зашифрованный поток, а не то, чем вы заняты. Мы, в свою очередь, не ведём журналов посещений и не анализируем ваш трафик.",
   },
   {
     q: "На скольких устройствах работает одна подписка?",
@@ -39,6 +40,10 @@ const faq = [
   {
     q: "Будет ли тормозить интернет?",
     a: "Мы используем современный протокол VLESS с Reality — он быстрее устаревших OpenVPN и L2TP и не режет скорость на видео. Разница с обычным подключением почти незаметна.",
+  },
+  {
+    q: "Для чего сервис использовать нельзя?",
+    a: "Для всего, что запрещено законом: атак на чужие системы, рассылки спама, распространения вредоносных программ и запрещённых материалов. Ответственность за то, к каким ресурсам вы обращаетесь, лежит на вас. Полный список — в Правилах использования, ссылка внизу страницы.",
   },
   {
     q: "Что если перестанет работать?",
@@ -71,12 +76,14 @@ export default function Home() {
             двадцать шагов. {brand.name} — {brand.tagline.toLowerCase()}.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
+            <TrackedLink
               href="/start"
+              event="cta_click"
+              detail="hero"
               className="rounded-xl bg-primary px-6 py-3 font-medium text-white transition hover:brightness-110"
             >
               Попробовать {TRIAL_DAYS} дня бесплатно
-            </Link>
+            </TrackedLink>
             <Link
               href="#kak"
               className="rounded-xl border border-line px-6 py-3 font-medium text-muted transition hover:text-fg"
@@ -142,8 +149,10 @@ export default function Home() {
                 {plan.price} ₽ за весь период
                 {plan.discount ? ` · выгода ${plan.discount}%` : ""}
               </p>
-              <Link
+              <TrackedLink
                 href={`/checkout?plan=${plan.id}`}
+                event="tariff_click"
+                detail={plan.id}
                 className={`mt-6 block rounded-xl px-4 py-2.5 text-center font-medium transition ${
                   plan.popular
                     ? "bg-primary text-white hover:brightness-110"
@@ -151,7 +160,7 @@ export default function Home() {
                 }`}
               >
                 Выбрать
-              </Link>
+              </TrackedLink>
             </div>
           ))}
         </div>

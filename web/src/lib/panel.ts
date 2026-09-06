@@ -31,6 +31,7 @@ export type Subscription = {
 };
 
 export type CreateInput = {
+  /** Только для журнала на нашей стороне; в панель не передаётся. */
   email: string;
   /** Когда панель отключит доступ. Сайт сам считает грейс-период и триал. */
   expiresAt: Date;
@@ -83,10 +84,16 @@ export function buildSubscriptionUrl(token: string): string {
   return `${SUBSCRIPTION_HOST.replace(/\/$/, "")}/sub/${token}`;
 }
 
-/** email → допустимый username панели: буквы, цифры, _ и -. */
-function usernameFromEmail(email: string): string {
-  const base = email.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 24);
-  return `${base}_${randomUUID().slice(0, 6)}`;
+/**
+ * Обезличенное имя учётной записи в панели.
+ *
+ * Почту сюда намеренно НЕ подмешиваем: панель стоит за пределами РФ, и любой
+ * персональный признак в ней — трансграничная передача персональных данных.
+ * Панели достаточно случайного имени, связь с аккаунтом хранится у нас в базе
+ * (`subscriptions.panel_token`).
+ */
+function newPanelUsername(): string {
+  return `u${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 }
 
 /* ------------------------------- Мок (dev) ------------------------------- */
@@ -241,18 +248,18 @@ class RemnawavePanel implements Panel {
     };
   }
 
-  async createSubscription({ email, expiresAt, trafficLimitBytes = 0 }: CreateInput) {
+  async createSubscription({ expiresAt, trafficLimitBytes = 0 }: CreateInput) {
     const created = await this.request<{ response: PanelUser }>("/api/users", {
       method: "POST",
       body: JSON.stringify({
-        username: usernameFromEmail(email),
+        username: newPanelUsername(),
         status: "ACTIVE",
         expireAt: expiresAt.toISOString(),
         trafficLimitBytes,
         // Лимит триала считается один раз за весь срок, без сброса по дням.
         trafficLimitStrategy: "NO_RESET",
         activeInternalSquads: [this.squadUuid],
-        email,
+        // Поле email панели не заполняем — см. newPanelUsername().
       }),
     });
     return this.toSubscription(created.response, true);

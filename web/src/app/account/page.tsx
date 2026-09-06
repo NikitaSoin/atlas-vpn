@@ -5,7 +5,7 @@ import { plans, TRIAL_DAYS, TRIAL_TRAFFIC_GB } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
 import { getStore } from "@/lib/db";
 import { telegramLinkUrl } from "@/lib/telegram";
-import { formatDate, stateLabel, subState, timeLeft } from "@/lib/subscription";
+import { formatDate, paidRecently, stateLabel, subState, timeLeft } from "@/lib/subscription";
 import SetupSection from "../setup/setup-section";
 
 export const dynamic = "force-dynamic";
@@ -89,7 +89,7 @@ export default async function AccountPage({
   // Банк возвращает человека на главную без номера заказа — смотрим сами,
   // чем закончился его последний платёж.
   const lastPay = await getStore().lastPayment(sub.email);
-  const justPaid = Boolean(paid) || Boolean(lastPay?.grantedAt && Date.now() - lastPay.grantedAt.getTime() < 3600_000);
+  const justPaid = Boolean(paid) || paidRecently(lastPay?.grantedAt);
 
   const state = subState(sub);
   if (state === "none") return <ChooseAccess email={sub.email} trialUsed={sub.trialUsed} err={err} />;

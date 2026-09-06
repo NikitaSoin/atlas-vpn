@@ -172,6 +172,12 @@ export async function applyPayment(
   return provisionPanel(sub);
 }
 
+/** Оплата была только что: показываем баннер «оплата получена» час после неё. */
+export function paidRecently(grantedAt: Date | null | undefined): boolean {
+  if (!grantedAt) return false;
+  return new Date().getTime() - grantedAt.getTime() < 3600_000;
+}
+
 export function formatDate(d: Date): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 }

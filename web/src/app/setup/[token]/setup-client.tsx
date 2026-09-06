@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { trackClient } from "@/lib/track-client";
 import {
   clientsByPlatform,
   platformLabels,
@@ -29,14 +30,17 @@ export default function SetupClient({
   importLink: string | null;
   qrSvg: string | null;
 }) {
-  const [platform, setPlatform] = useState<Platform>("ios");
+  // Платформу определяем при первом рендере на клиенте: вызов в эффекте
+  // приводил к лишнему каскадному рендеру.
+  const [platform, setPlatform] = useState<Platform>(() =>
+    typeof navigator === "undefined" ? "ios" : detectPlatform(),
+  );
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
 
-  useEffect(() => setPlatform(detectPlatform()), []);
-
   async function copy() {
     if (!importLink) return;
+    trackClient("config_copy", platform);
     await navigator.clipboard.writeText(importLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -87,6 +91,7 @@ export default function SetupClient({
                 href={client.installUrl}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => trackClient("client_install_click", platform)}
                 className="rounded-xl border border-line px-4 py-2 text-sm transition hover:border-accent"
               >
                 1. {client.installLabel}
@@ -104,6 +109,7 @@ export default function SetupClient({
               {client.deepLink && subscriptionUrl && (
                 <a
                   href={client.deepLink(subscriptionUrl)}
+                  onClick={() => trackClient("config_import_click", platform)}
                   className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition hover:brightness-110"
                 >
                   2. Добавить подписку
@@ -149,7 +155,10 @@ export default function SetupClient({
           </button>
         </div>
         <button
-          onClick={() => setShowQr((v) => !v)}
+          onClick={() => {
+            if (!showQr) trackClient("config_qr", platform);
+            setShowQr((v) => !v);
+          }}
           className="mt-3 text-sm text-accent-ink hover:underline"
         >
           {showQr ? "Скрыть QR-код" : "Показать QR-код для другого устройства"}

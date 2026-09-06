@@ -46,6 +46,17 @@ export type SubPatch = Partial<
 
 export type ReminderKind = "expiring" | "expired";
 
+export type ConsentRecord = {
+  email: string;
+  /** Какие документы и каких редакций приняты: "offer:1.0;rules:1.0;…". */
+  versions: string;
+  /** Что именно человек подтвердил: акцепт оферты, согласие на ПДн и т.д. */
+  kind: string;
+  /** Отпечаток посетителя (не IP) — доказательство обстоятельств акцепта. */
+  visitor: string;
+  createdAt: Date;
+};
+
 export type PaymentRecord = {
   orderId: string;
   paymentId: string | null;
@@ -104,6 +115,13 @@ export interface Store {
   setTelegram(token: string, chatId: string | null): Promise<void>;
   /** Сохранить выданный доступ целиком, чтобы страницы не ходили в панель. */
   setPanelAccess(token: string, access: PanelAccess): Promise<void>;
+  /**
+   * Записать согласие. Хранится навсегда: по ч. 1 ст. 9 152-ФЗ наличие
+   * согласия доказывает оператор, а по ст. 438 ГК — факт акцепта оферты.
+   */
+  addConsent(rec: Omit<ConsentRecord, "createdAt">): Promise<void>;
+  /** Согласия по адресу почты — для ответа на запрос субъекта и для спора. */
+  listConsents(email: string): Promise<ConsentRecord[]>;
   /** Платежи: создание, поиск, отметка о начислении. */
   createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">): Promise<PaymentRecord>;
   findPayment(orderId: string): Promise<PaymentRecord | null>;
@@ -188,6 +206,15 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_used BOOLEAN NOT NULL D
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_url TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_link TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_user_id TEXT;
+CREATE TABLE IF NOT EXISTS consents (
+  id          SERIAL PRIMARY KEY,
+  email       TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  versions    TEXT NOT NULL,
+  visitor     TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS consents_email ON consents (email, created_at DESC);
 CREATE TABLE IF NOT EXISTS payments (
   order_id     TEXT PRIMARY KEY,
   payment_id   TEXT,
@@ -406,6 +433,27 @@ class PgStore implements Store {
        WHERE token = $1`,
       [token, access.panelToken, access.panelUrl, access.panelLink, access.panelUserId],
     );
+  }
+
+  async addConsent(rec: Omit<ConsentRecord, "createdAt">) {
+    await this.q(
+      "INSERT INTO consents (email, kind, versions, visitor) VALUES ($1, $2, $3, $4)",
+      [rec.email, rec.kind, rec.versions, rec.visitor],
+    );
+  }
+
+  async listConsents(email: string) {
+    const { rows } = await this.q(
+      "SELECT * FROM consents WHERE email = $1 ORDER BY created_at DESC",
+      [email],
+    );
+    return rows.map((r) => ({
+      email: r.email as string,
+      kind: r.kind as string,
+      versions: r.versions as string,
+      visitor: r.visitor as string,
+      createdAt: new Date(r.created_at as string),
+    }));
   }
 
   private rowToPayment(r: PgRow): PaymentRecord {
@@ -648,6 +696,7 @@ class MemoryStore implements Store {
   private codes = new Map<string, { code: string; expiresAt: Date }>();
   private nonces = new Map<string, Date>();
   private payments: PaymentRecord[] = [];
+  private consents: ConsentRecord[] = [];
   private tickets: Ticket[] = [];
   private nextTicketId = 1;
   private events: (EventRecord & { createdAt: Date })[] = [];
@@ -708,6 +757,12 @@ class MemoryStore implements Store {
   async setPanelAccess(token: string, access: PanelAccess) {
     const sub = this.subs.find((s) => s.token === token);
     if (sub) Object.assign(sub, access);
+  }
+  async addConsent(rec: Omit<ConsentRecord, "createdAt">) {
+    this.consents.push({ ...rec, createdAt: new Date() });
+  }
+  async listConsents(email: string) {
+    return this.consents.filter((c) => c.email === email).reverse();
   }
   async createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">) {
     const full: PaymentRecord = { ...rec, grantedAt: null, createdAt: new Date() };

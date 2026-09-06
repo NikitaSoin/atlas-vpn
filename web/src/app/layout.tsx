@@ -3,7 +3,7 @@ import { Golos_Text } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { brand } from "@/lib/brand";
+import { brand, companyFilled, getCompany } from "@/lib/brand";
 import { currentSub } from "@/lib/session";
 import { viaOurVpn } from "@/lib/site";
 import { subState, timeLeft } from "@/lib/subscription";
@@ -28,6 +28,7 @@ export default async function RootLayout({
   const state = sub ? subState(sub) : null;
   const left = sub ? timeLeft(sub) : null;
   const viaVpn = viaOurVpn(hdrs);
+  const company = getCompany();
   // На узком экране в шапке помещается только короткая подпись.
   const cabinetLabel =
     sub && state && left
@@ -87,13 +88,44 @@ export default async function RootLayout({
         <PageView />
 
         <footer className="mt-24 border-t border-line/70">
-          <div className="mx-auto flex max-w-5xl flex-col gap-2 px-5 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              © {new Date().getFullYear()} {brand.name} — {brand.tagline.toLowerCase()}
-            </span>
-            <a href={brand.supportTelegram} target="_blank" rel="noreferrer">
-              Поддержка в Telegram
-            </a>
+          <div className="mx-auto max-w-5xl px-5 py-8 text-sm text-muted">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                © {new Date().getFullYear()} {brand.name} — {brand.tagline.toLowerCase()}
+              </span>
+              <nav className="flex flex-wrap gap-x-4 gap-y-1">
+                <Link href="/legal/offer" className="hover:text-fg">
+                  Оферта
+                </Link>
+                <Link href="/legal/rules" className="hover:text-fg">
+                  Правила использования
+                </Link>
+                <Link href="/legal/privacy" className="hover:text-fg">
+                  Обработка данных
+                </Link>
+                <a href={brand.supportTelegram} target="_blank" rel="noreferrer" className="hover:text-fg">
+                  Поддержка
+                </a>
+              </nav>
+            </div>
+            {/* Сведения об исполнителе — требование ст. 9 ЗоЗПП. */}
+            <p className="mt-4 border-t border-line/60 pt-4 text-xs leading-relaxed">
+              {companyFilled(company) ? (
+                <>
+                  {company.form} {company.name}
+                  {company.ogrnip && <> · ОГРНИП {company.ogrnip}</>}
+                  {company.inn && <> · ИНН {company.inn}</>}
+                  {company.address && <> · {company.address}</>}
+                  {company.email && <> · {company.email}</>}
+                </>
+              ) : (
+                <span className="text-amber-700">
+                  Реквизиты исполнителя не заданы: до публичного запуска заполните
+                  переменные COMPANY_* — без них сайт не соответствует ст. 9 Закона
+                  «О защите прав потребителей».
+                </span>
+              )}
+            </p>
           </div>
         </footer>
       </body>

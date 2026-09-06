@@ -89,8 +89,9 @@ export async function POST(req: NextRequest) {
         status: r.Status ?? "NEW",
         paymentUrl: r.PaymentURL,
       });
-      // В лог — чтобы спорный платёж можно было найти по номеру заказа.
-      console.log(`[оплата] заказ ${orderId}: ${amount} коп., ${email}, статус ${r.Status}`);
+      // В лог — номер заказа и сумма, без персональных данных: почту к
+      // заказу всегда можно поднять из базы.
+      console.log(`[оплата] заказ ${orderId}: ${amount} коп., статус ${r.Status}`);
       await track(req.headers, event);
       return NextResponse.redirect(r.PaymentURL, { status: 303 });
     } catch (e) {

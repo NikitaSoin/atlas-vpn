@@ -49,15 +49,17 @@ export default function CheckoutForm({
           }`}
         />
       </label>
+      {/* Галочка НЕ отмечена заранее: с 01.09.2025 ст. 16 ЗоЗПП прямо
+          запрещает автоматические механики согласия. */}
       <label className="flex items-start gap-2.5 text-sm text-muted">
         <input
           type="checkbox"
           name="autoRenew"
-          defaultChecked
           className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
         />
         <span>
-          Автопродление — доступ не прервётся, отключить можно в любой момент
+          Продлевать автоматически: списывать {price} ₽ в день окончания
+          доступа. Отключить можно в личном кабинете в любой момент.
         </span>
       </label>
       <button
