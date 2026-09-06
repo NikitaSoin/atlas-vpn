@@ -57,14 +57,11 @@ export default async function RootLayout({
               <span className="-ml-1 text-accent-ink">VPN</span>
             </Link>
             <nav className="flex items-center gap-4 text-[15px] text-muted sm:gap-6">
-              <Link href="/#tarify" className="hidden hover:text-fg sm:inline">
+              <Link href="/plans" className="hover:text-fg">
                 Тарифы
               </Link>
-              <Link href="/#faq" className="hidden hover:text-fg sm:inline">
-                Вопросы
-              </Link>
               <Link href="/support" className="hover:text-fg">
-                Поддержка
+                Помощь
               </Link>
               <Link
                 href={sub ? "/account" : "/start?mode=login"}
@@ -82,7 +79,7 @@ export default async function RootLayout({
             </nav>
           </div>
         </header>
-        <StatusBanner state={state} viaVpn={viaVpn} email={sub?.email ?? null} />
+        <StatusBanner state={state} viaVpn={viaVpn} />
 
         {children}
         <PageView />
@@ -103,9 +100,9 @@ export default async function RootLayout({
                 <Link href="/legal/privacy" className="hover:text-fg">
                   Обработка данных
                 </Link>
-                <a href={brand.supportTelegram} target="_blank" rel="noreferrer" className="hover:text-fg">
+                <Link href="/support" className="hover:text-fg">
                   Поддержка
-                </a>
+                </Link>
               </nav>
             </div>
             {/* Сведения об исполнителе — требование ст. 9 ЗоЗПП. */}

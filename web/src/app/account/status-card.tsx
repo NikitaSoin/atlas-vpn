@@ -54,7 +54,7 @@ export default function StatusCard({ sub }: { sub: SubRecord }) {
   const text = preparing
     ? "Аккаунт готов. Настройки подключения появятся после подготовки доступа."
     : state === "trial"
-      ? `До ${formatDate(sub.expiresAt)}. Лимит — ${TRIAL_TRAFFIC_GB} ГБ на весь пробный период.`
+      ? `Лимит — ${TRIAL_TRAFFIC_GB} ГБ на весь пробный период. Доступ до ${formatDate(sub.expiresAt)}`
       : state === "active"
         ? "Продление прибавит срок к оставшимся дням. Настраивать VPN заново не нужно."
         : state === "grace"

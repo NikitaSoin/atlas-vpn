@@ -77,7 +77,7 @@ export default function CheckoutForm({
         disabled={sending}
         className="w-full rounded-xl bg-primary px-4 py-3 font-medium text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70 disabled:hover:brightness-100"
       >
-        {sending ? "Готовим оплату, секунду…" : `Перейти к оплате · ${price} ₽`}
+        {sending ? "Готовим оплату, секунду…" : `Перейти к оплате · ${price.toLocaleString("ru-RU")} ₽`}
       </button>
     </form>
   );

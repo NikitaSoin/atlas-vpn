@@ -84,12 +84,12 @@ export default async function Home() {
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <TrackedLink
-              href={hasAccess ? "/account" : "/start?mode=signup&trial=1"}
+              href={sub ? "/account" : "/start?mode=signup&trial=1"}
               event="cta_click"
               detail="hero"
               className="rounded-xl bg-primary px-6 py-3 font-medium text-white transition hover:brightness-110"
             >
-              {hasAccess ? "В личный кабинет" : `Попробовать ${TRIAL_DAYS} дня бесплатно`}
+              {sub ? "В личный кабинет" : `Попробовать ${TRIAL_DAYS} дня бесплатно`}
             </TrackedLink>
             <Link
               href="#kak"

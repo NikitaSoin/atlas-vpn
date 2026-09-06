@@ -9,11 +9,9 @@ import type { SubState } from "@/lib/subscription";
 export default function StatusBanner({
   state,
   viaVpn,
-  email,
 }: {
   state: SubState | null;
   viaVpn: boolean;
-  email: string | null;
 }) {
   if (state === "grace" || state === "expired") {
     return (
@@ -25,7 +23,7 @@ export default function StatusBanner({
               : "Подписка закончилась, VPN выключен."}
           </span>
           <Link
-            href={`/checkout?email=${encodeURIComponent(email ?? "")}`}
+            href="/plans"
             className="rounded-lg bg-primary px-3 py-1.5 font-medium text-white transition hover:brightness-110"
           >
             Продлить

@@ -102,7 +102,8 @@ export default async function AccountPage({
         <div className="mt-6 rounded-2xl border border-good/40 bg-good/10 p-4 text-sm">
           <p className="font-medium text-good">Оплата получена</p>
           <p className="mt-1 text-fg/80">
-            {planTitle} · доступ до {formatDate(sub.expiresAt)}. Настройки остаются прежними.
+            {planTitle} · настройки остаются прежними. Доступ до{" "}
+            {formatDate(sub.expiresAt)}
           </p>
         </div>
       )}

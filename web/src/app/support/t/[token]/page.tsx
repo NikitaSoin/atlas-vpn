@@ -36,11 +36,11 @@ export default async function TicketPage({
               : "bg-surface-2 text-muted"
           }`}
         >
-          {ticket.status === "open" ? "в работе" : "закрыто"}
+          {ticket.status === "open" ? "В работе" : "Закрыто"}
         </span>
       </div>
       <p className="mt-2 text-sm text-muted">
-        Сохраните ссылку на эту страницу — здесь появится наш ответ.
+        Сохраните личную ссылку на обращение — здесь появится ответ.
       </p>
 
       <div className="mt-8 space-y-3">
@@ -72,11 +72,17 @@ export default async function TicketPage({
         className="mt-6 space-y-3 rounded-2xl border border-line bg-surface p-5"
       >
         <input type="hidden" name="ticket" value={ticket.token} />
+        {ticket.status !== "open" && (
+          <p className="text-sm text-muted">
+            Если вопрос остался, напишите ниже — обращение снова откроется.
+          </p>
+        )}
+        <span className="block text-sm text-muted">Дополнить обращение</span>
         <textarea
           name="message"
           required
           rows={3}
-          placeholder="Дописать сообщение…"
+          placeholder="Написать сообщение…"
           className="w-full resize-y rounded-xl border border-line bg-ink px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-accent"
         />
         <button
