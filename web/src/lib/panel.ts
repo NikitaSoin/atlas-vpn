@@ -46,6 +46,8 @@ export type UpdateInput = {
 };
 
 export interface Panel {
+  /** Адрес панели, который сейчас отвечает (для ссылок и проксирования). */
+  publicBase?(): string;
   createSubscription(input: CreateInput): Promise<Subscription>;
   /** `withLink` — тянуть ли vless-линк отдельным запросом (нужен только при выдаче). */
   getSubscription(token: string, withLink?: boolean): Promise<Subscription | null>;
@@ -103,6 +105,10 @@ function newPanelUsername(): string {
 
 class MockPanel implements Panel {
   private store = new Map<string, Subscription>();
+
+  publicBase() {
+    return SUBSCRIPTION_HOST.replace(/\/$/, "");
+  }
 
   async createSubscription({ expiresAt }: CreateInput) {
     const token = randomUUID().replace(/-/g, "").slice(0, 16);

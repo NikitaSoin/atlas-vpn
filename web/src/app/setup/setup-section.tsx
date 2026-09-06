@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import type { SubRecord } from "@/lib/db";
+import { siteUrl } from "@/lib/site";
 import SetupClient from "./[token]/setup-client";
 
 /**
@@ -12,11 +13,16 @@ import SetupClient from "./[token]/setup-client";
  * его сама по авто-обновлению. Инструкция по установке видна всегда.
  */
 export default async function SetupSection({ sub }: { sub: SubRecord }) {
-  // Отдаём ССЫЛКУ-ПОДПИСКУ, а не один сервер: в подписке лежат все входы
-  // сразу (прямой и через Cloudflare), приложение выберет рабочий и само
-  // подхватит новые, когда мы их добавим. Одиночный vless:// — запасной
-  // вариант на случай, если подписка почему-то не сохранилась.
-  const importLink = sub.panelUrl ?? sub.panelLink;
+  // Отдаём ССЫЛКУ-ПОДПИСКУ, а не один сервер: в ней лежат все точки входа,
+  // приложение подхватит новые само, когда мы их добавим.
+  //
+  // Ссылка ведёт на НАШ адрес, а не на панель: адрес ретранслятора Cloudflare
+  // у российских провайдеров фильтруется, и подписка просто не скачивается
+  // (07.09.2026: 0 байт за 20 с, при том что наш сайт открывается за 0.5 с).
+  // Маршрут /sub/[token] сам сходит в панель и вернёт содержимое.
+  const importLink = sub.panelToken
+    ? `${siteUrl()}/sub/${sub.panelToken}`
+    : (sub.panelUrl ?? sub.panelLink);
   const qrSvg = importLink
     ? await QRCode.toString(importLink, { type: "svg", margin: 0, width: 160 })
     : null;
