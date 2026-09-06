@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MIN_PASSWORD_LENGTH } from "@/lib/password";
+import { MIN_PASSWORD_LENGTH } from "@/lib/password-rules";
 
 const input =
   "mt-1.5 w-full rounded-xl border border-line bg-ink px-4 py-2.5 outline-none placeholder:text-muted/60 focus:border-accent";
@@ -104,8 +104,7 @@ export default function AuthForm({
               <Link href="/legal/rules" target="_blank" className="text-accent-ink hover:underline">
                 правила использования
               </Link>
-              , в том числе обязуюсь не использовать сервис для действий,
-              запрещённых законом.
+              .
             </span>
           </label>
 
@@ -121,9 +120,8 @@ export default function AuthForm({
               Я согласен на обработку персональных данных на условиях{" "}
               <Link href="/legal/privacy" target="_blank" className="text-accent-ink hover:underline">
                 политики обработки персональных данных
-              </Link>{" "}
-              и уведомлён, что часть данных передаётся за пределы России, потому
-              что сервер находится за рубежом.
+              </Link>
+              .
             </span>
           </label>
         </div>

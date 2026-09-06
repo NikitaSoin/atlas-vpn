@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { brand } from "@/lib/brand";
 import { TRIAL_DAYS, TRIAL_TRAFFIC_GB } from "@/lib/plans";
-import { MIN_PASSWORD_LENGTH } from "@/lib/password";
+import { MIN_PASSWORD_LENGTH } from "@/lib/password-rules";
 import { currentSub } from "@/lib/session";
 import AuthForm from "./auth-form";
 

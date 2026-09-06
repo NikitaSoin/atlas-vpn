@@ -19,19 +19,8 @@ const scryptAsync = promisify(scrypt) as (
  */
 const KEY_LEN = 64;
 
-/** Минимальные требования: длина важнее «сложности» из спецсимволов. */
-export const MIN_PASSWORD_LENGTH = 8;
-
-export function passwordProblem(password: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `Пароль должен быть не короче ${MIN_PASSWORD_LENGTH} символов.`;
-  }
-  if (password.length > 200) return "Пароль слишком длинный.";
-  // Самые частые пароли отсекаем сразу: они подбираются за секунды.
-  const weak = ["12345678", "123456789", "1234567890", "password", "qwertyui", "qwerty123"];
-  if (weak.includes(password.toLowerCase())) return "Такой пароль слишком простой.";
-  return null;
-}
+// Правила к паролю живут отдельно: они нужны и в браузере.
+export { MIN_PASSWORD_LENGTH, passwordProblem } from "./password-rules";
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
