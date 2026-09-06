@@ -134,9 +134,9 @@ export async function GET(req: NextRequest) {
   const reach = Object.fromEntries(
     await Promise.all(
       [
-        ["telegram", "api.telegram.org"],
+        ["telegram-api", "api.telegram.org"],
         ["cloudflare", "cloudflare.com"],
-        ["workers.dev", "example.workers.dev"],
+        ["workers.dev", "workers.dev"],
         ["github", "api.github.com"],
         ["riga-direct", "95.182.85.234"],
       ].map(async ([name, host]) => [name, (await probe(host, 443, 6000)).ok]),

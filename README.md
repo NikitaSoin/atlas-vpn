@@ -147,6 +147,7 @@ SUBSCRIPTION_HOST=https://sub.example.com
 | `TRIAL_TRAFFIC_GB` | лимит трафика триала, по умолчанию 10 |
 | `VPN_EXIT_IPS` | адреса нод через запятую — распознавать заход через наш VPN |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET` | бот уведомлений |
+| `TELEGRAM_API_BASE` | ретранслятор вместо `api.telegram.org` — с российского хостинга прямой доступ закрыт |
 | `SMTP_URL`, `MAIL_FROM` | почта: `smtps://user:pass@host:465`; `SMTP_URL=log` печатает письма в консоль (разработка) |
 | `REMINDERS_DISABLED=1` | выключить планировщик напоминаний (для тестов) |
 
@@ -158,6 +159,12 @@ SUBSCRIPTION_HOST=https://sub.example.com
 две из трёх дают таймаут на любой порт, включая 22 и 443. Это блокировка
 адреса на уровне ТСПУ у части операторов, и сеть Timeweb среди них. IPv6 на
 сервере нет, обойти нечем.
+
+🔴 Отдельно: с того же Timeweb недоступен и `api.telegram.org` (проверено
+`/api/diag`, поле `reach`). Вебхук работает — его шлёт Telegram к нам, — а вот
+отправка сообщений ботом молча не проходит. Лечится тем же ретранслятором:
+переменная `TELEGRAM_API_BASE`. `cloudflare.com` и `api.github.com` с Timeweb
+доступны, значит путь через Cloudflare Workers рабочий.
 
 Два следствия:
 

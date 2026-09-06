@@ -17,10 +17,14 @@ export async function sendTelegram(chatId: string, text: string): Promise<boolea
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) return false;
   try {
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    // TELEGRAM_API_BASE — адрес ретранслятора, если прямой доступ к
+    // api.telegram.org закрыт (из российских ЦОД он обычно недоступен).
+    const base = (process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org").replace(/\/$/, "");
+    const res = await fetch(`${base}/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) console.error("[telegram]", res.status, await res.text());
     return res.ok;
