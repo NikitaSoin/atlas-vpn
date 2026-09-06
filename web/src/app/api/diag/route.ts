@@ -4,6 +4,7 @@ import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
 import { X509Certificate } from "node:crypto";
 import { panelProxyUrl, usingMockPanel } from "@/lib/panel";
 import { mailConfigured } from "@/lib/mail";
+import { acquiringConfigured, acquiringDemo } from "@/lib/acquiring";
 import { telegramConfigured } from "@/lib/telegram";
 import { siteUrl } from "@/lib/site";
 import { connect } from "node:net";
@@ -168,6 +169,7 @@ export async function GET(req: NextRequest) {
     panelNet,
     reach,
     mail: mailConfigured(),
+    acquiring: acquiringConfigured() ? (acquiringDemo() ? "демо-терминал" : "боевой терминал") : false,
     smtpPort,
     telegram: telegramConfigured(),
     siteUrl: siteUrl(),

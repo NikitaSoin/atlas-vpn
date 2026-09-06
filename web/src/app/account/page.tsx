@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { brand } from "@/lib/brand";
 import { plans, TRIAL_DAYS, TRIAL_TRAFFIC_GB } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
+import { getStore } from "@/lib/db";
 import { telegramLinkUrl } from "@/lib/telegram";
 import { formatDate, stateLabel, subState, timeLeft } from "@/lib/subscription";
 import SetupSection from "../setup/setup-section";
@@ -80,11 +81,15 @@ function ChooseAccess({ email, trialUsed, err }: { email: string; trialUsed: boo
 export default async function AccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; err?: string }>;
+  searchParams: Promise<{ new?: string; err?: string; paid?: string }>;
 }) {
   const sub = await currentSub();
   if (!sub) redirect("/start");
-  const { new: isNew, err } = await searchParams;
+  const { new: isNew, err, paid } = await searchParams;
+  // Банк возвращает человека на главную без номера заказа — смотрим сами,
+  // чем закончился его последний платёж.
+  const lastPay = await getStore().lastPayment(sub.email);
+  const justPaid = Boolean(paid) || Boolean(lastPay?.grantedAt && Date.now() - lastPay.grantedAt.getTime() < 3600_000);
 
   const state = subState(sub);
   if (state === "none") return <ChooseAccess email={sub.email} trialUsed={sub.trialUsed} err={err} />;
@@ -113,6 +118,15 @@ export default async function AccountPage({
           <button className="text-sm text-muted hover:text-fg">Выйти</button>
         </form>
       </div>
+
+      {justPaid && (
+        <div className="mt-6 rounded-2xl border border-good/40 bg-good/10 p-4 text-sm">
+          <p className="font-medium text-good">Оплата получена</p>
+          <p className="mt-1 text-fg/80">
+            Доступ активен до {formatDate(sub.expiresAt)}. Настраивать заново ничего не нужно.
+          </p>
+        </div>
+      )}
 
       <section className={`mt-6 rounded-2xl border p-5 ${tone}`}>
         <p className="font-medium">{stateLabel[state]}</p>

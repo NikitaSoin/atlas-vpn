@@ -46,6 +46,21 @@ export type SubPatch = Partial<
 
 export type ReminderKind = "expiring" | "expired";
 
+export type PaymentRecord = {
+  orderId: string;
+  paymentId: string | null;
+  email: string;
+  planId: string;
+  /** В копейках, целым: рубли с дробью расходятся с банком на копейку. */
+  amount: number;
+  autoRenew: boolean;
+  status: string;
+  paymentUrl: string | null;
+  /** Момент реального начисления — на нём держится идемпотентность. */
+  grantedAt: Date | null;
+  createdAt: Date;
+};
+
 export type PanelAccess = {
   panelToken: string;
   panelUrl: string | null;
@@ -89,6 +104,22 @@ export interface Store {
   setTelegram(token: string, chatId: string | null): Promise<void>;
   /** Сохранить выданный доступ целиком, чтобы страницы не ходили в панель. */
   setPanelAccess(token: string, access: PanelAccess): Promise<void>;
+  /** Платежи: создание, поиск, отметка о начислении. */
+  createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">): Promise<PaymentRecord>;
+  findPayment(orderId: string): Promise<PaymentRecord | null>;
+  updatePayment(
+    orderId: string,
+    patch: Partial<Pick<PaymentRecord, "paymentId" | "status" | "paymentUrl">>,
+  ): Promise<void>;
+  /**
+   * Пометить платёж начисленным. true — пометили сейчас (начисляем),
+   * false — пометка уже стояла (повторная нотификация банка, не начисляем).
+   */
+  markGranted(orderId: string): Promise<boolean>;
+  /** Снять отметку при возврате, чтобы доступ можно было забрать. */
+  clearGranted(orderId: string): Promise<void>;
+  /** Последний платёж по почте — для баннера «оплата получена». */
+  lastPayment(email: string): Promise<PaymentRecord | null>;
   /** Одноразовый ключ формы: защита от повторной отправки (двойной клик). */
   createNonce(ttlMinutes: number): Promise<string>;
   /** true — ключ был и погашен сейчас; false — уже использован или просрочен. */
@@ -157,6 +188,19 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_used BOOLEAN NOT NULL D
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_url TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_link TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_user_id TEXT;
+CREATE TABLE IF NOT EXISTS payments (
+  order_id     TEXT PRIMARY KEY,
+  payment_id   TEXT,
+  email        TEXT NOT NULL,
+  plan_id      TEXT NOT NULL,
+  amount       BIGINT NOT NULL,
+  auto_renew   BOOLEAN NOT NULL DEFAULT FALSE,
+  status       TEXT NOT NULL,
+  payment_url  TEXT,
+  granted_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS payments_email ON payments (email, created_at DESC);
 CREATE TABLE IF NOT EXISTS nonces (
   token       TEXT PRIMARY KEY,
   expires_at  TIMESTAMPTZ NOT NULL
@@ -364,6 +408,70 @@ class PgStore implements Store {
     );
   }
 
+  private rowToPayment(r: PgRow): PaymentRecord {
+    return {
+      orderId: r.order_id as string,
+      paymentId: (r.payment_id as string | null) ?? null,
+      email: r.email as string,
+      planId: r.plan_id as string,
+      amount: Number(r.amount),
+      autoRenew: Boolean(r.auto_renew),
+      status: r.status as string,
+      paymentUrl: (r.payment_url as string | null) ?? null,
+      grantedAt: r.granted_at ? new Date(r.granted_at as string) : null,
+      createdAt: new Date(r.created_at as string),
+    };
+  }
+
+  async createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">) {
+    const { rows } = await this.q(
+      `INSERT INTO payments (order_id, payment_id, email, plan_id, amount, auto_renew, status, payment_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [rec.orderId, rec.paymentId, rec.email, rec.planId, rec.amount, rec.autoRenew, rec.status, rec.paymentUrl],
+    );
+    return this.rowToPayment(rows[0]);
+  }
+
+  async findPayment(orderId: string) {
+    const { rows } = await this.q("SELECT * FROM payments WHERE order_id = $1", [orderId]);
+    return rows[0] ? this.rowToPayment(rows[0]) : null;
+  }
+
+  async updatePayment(
+    orderId: string,
+    patch: Partial<Pick<PaymentRecord, "paymentId" | "status" | "paymentUrl">>,
+  ) {
+    await this.q(
+      `UPDATE payments
+       SET payment_id = COALESCE($2, payment_id),
+           status = COALESCE($3, status),
+           payment_url = COALESCE($4, payment_url)
+       WHERE order_id = $1`,
+      [orderId, patch.paymentId ?? null, patch.status ?? null, patch.paymentUrl ?? null],
+    );
+  }
+
+  async markGranted(orderId: string) {
+    // Условие в самом UPDATE: две одновременные нотификации не начислят дважды.
+    const { rows } = await this.q(
+      "UPDATE payments SET granted_at = now() WHERE order_id = $1 AND granted_at IS NULL RETURNING order_id",
+      [orderId],
+    );
+    return rows.length > 0;
+  }
+
+  async clearGranted(orderId: string) {
+    await this.q("UPDATE payments SET granted_at = NULL WHERE order_id = $1", [orderId]);
+  }
+
+  async lastPayment(email: string) {
+    const { rows } = await this.q(
+      "SELECT * FROM payments WHERE email = $1 ORDER BY created_at DESC LIMIT 1",
+      [email],
+    );
+    return rows[0] ? this.rowToPayment(rows[0]) : null;
+  }
+
   async createNonce(ttlMinutes: number) {
     const token = randomBytes(18).toString("base64url");
     await this.q(
@@ -539,6 +647,7 @@ class MemoryStore implements Store {
   private subs: SubRecord[] = [];
   private codes = new Map<string, { code: string; expiresAt: Date }>();
   private nonces = new Map<string, Date>();
+  private payments: PaymentRecord[] = [];
   private tickets: Ticket[] = [];
   private nextTicketId = 1;
   private events: (EventRecord & { createdAt: Date })[] = [];
@@ -599,6 +708,34 @@ class MemoryStore implements Store {
   async setPanelAccess(token: string, access: PanelAccess) {
     const sub = this.subs.find((s) => s.token === token);
     if (sub) Object.assign(sub, access);
+  }
+  async createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">) {
+    const full: PaymentRecord = { ...rec, grantedAt: null, createdAt: new Date() };
+    this.payments.push(full);
+    return full;
+  }
+  async findPayment(orderId: string) {
+    return this.payments.find((p) => p.orderId === orderId) ?? null;
+  }
+  async updatePayment(
+    orderId: string,
+    patch: Partial<Pick<PaymentRecord, "paymentId" | "status" | "paymentUrl">>,
+  ) {
+    const p = this.payments.find((x) => x.orderId === orderId);
+    if (p) Object.assign(p, Object.fromEntries(Object.entries(patch).filter(([, v]) => v != null)));
+  }
+  async markGranted(orderId: string) {
+    const p = this.payments.find((x) => x.orderId === orderId);
+    if (!p || p.grantedAt) return false;
+    p.grantedAt = new Date();
+    return true;
+  }
+  async clearGranted(orderId: string) {
+    const p = this.payments.find((x) => x.orderId === orderId);
+    if (p) p.grantedAt = null;
+  }
+  async lastPayment(email: string) {
+    return [...this.payments].reverse().find((p) => p.email === email) ?? null;
   }
   async createNonce(ttlMinutes: number) {
     const token = randomBytes(18).toString("base64url");

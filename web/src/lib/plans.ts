@@ -44,6 +44,17 @@ export function findPlan(id: string): Plan | undefined {
   return plans.find((p) => p.id === id);
 }
 
+/**
+ * Сумма к списанию — в копейках и только с сервера. Из браузера принимается
+ * лишь идентификатор тарифа: иначе подписку можно купить за рубль, поправив
+ * запрос в консоли браузера.
+ */
+export function priceKopecks(plan: Plan): number {
+  const override = process.env[`PRICE_${plan.id.toUpperCase()}_KOPECKS`];
+  const n = override ? Number(override) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : plan.price * 100;
+}
+
 export const TRIAL_DAYS = 3;
 /**
  * Лимит трафика на пробный период, ГБ. Продуктовое решение: «триал 3 дня,

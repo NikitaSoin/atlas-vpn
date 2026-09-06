@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { findPlan, plans } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
 import { getStore } from "@/lib/db";
+import { acquiringConfigured, acquiringDemo } from "@/lib/acquiring";
 import CheckoutForm from "./checkout-form";
 
 /** Ключ формы живёт достаточно, чтобы человек успел подумать. */
@@ -13,9 +14,9 @@ export const dynamic = "force-dynamic";
 export default async function CheckoutPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; email?: string }>;
+  searchParams: Promise<{ plan?: string; email?: string; err?: string }>;
 }) {
-  const { plan: planId, email: emailParam } = await searchParams;
+  const { plan: planId, email: emailParam, err } = await searchParams;
   const plan = findPlan(planId ?? "") ?? plans.find((p) => p.popular);
   if (!plan) notFound();
 
@@ -41,6 +42,18 @@ export default async function CheckoutPage({
           {plan.perMonth} ₽ в месяц · все ваши устройства
         </p>
 
+        {err === "bank" && (
+          <p className="mt-4 rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">
+            Банк не принял платёж — попробуйте ещё раз через минуту. Деньги не
+            списаны. Если повторится, напишите в поддержку.
+          </p>
+        )}
+        {acquiringDemo() && (
+          <p className="mt-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700">
+            Тестовый терминал: форма оплаты настоящая, деньги не списываются.
+          </p>
+        )}
+
         <CheckoutForm
           planId={plan.id}
           price={plan.price}
@@ -50,9 +63,9 @@ export default async function CheckoutPage({
         />
 
         <p className="mt-4 text-center text-xs leading-relaxed text-muted">
-          После нажатия откроется защищённая страница оплаты Т-Кассы — это
-          интернет-эквайринг Т-Бизнеса. Там можно заплатить картой или через
-          СБП. Данные карты остаются у банка, мы их не видим и не храним.
+          {acquiringConfigured()
+            ? "После нажатия откроется защищённая страница оплаты Т-Кассы — это интернет-эквайринг Т-Бизнеса. Там можно заплатить картой или через СБП. Данные карты остаются у банка, мы их не видим и не храним."
+            : "Приём оплаты ещё настраивается: сейчас доступ включится сразу, без списания."}
         </p>
         <p className="mt-2 text-center text-xs text-muted">
           Если доступ у вас уже есть, в том числе пробный, срок прибавится к

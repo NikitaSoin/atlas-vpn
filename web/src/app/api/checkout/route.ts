@@ -1,29 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { absoluteUrl } from "@/lib/site";
-import { findPlan } from "@/lib/plans";
+import { findPlan, priceKopecks } from "@/lib/plans";
 import { getStore } from "@/lib/db";
 import { setSession } from "@/lib/session";
 import { applyPayment } from "@/lib/subscription";
 import { notify } from "@/lib/notify";
 import { track } from "@/lib/analytics";
+import { acquiringConfigured, initPayment } from "@/lib/acquiring";
+import { brand } from "@/lib/brand";
 
 /**
- * Приём оплаты и выдача доступа.
+ * Начало оплаты.
  *
- * Платёж пока не проводится: форма сразу создаёт или продлевает подписку,
- * чтобы можно было пройти весь путь. Следующий шаг — эквайринг Т-Кассы:
- * здесь появится создание платежа и редирект на платёжную форму, а
- * applyPayment переедет в вебхук об успешной оплате. Галочка автопродления
- * сохраняется уже сейчас — реальное списание заработает вместе с
- * рекуррентными платежами Т-Кассы.
+ * Есть реквизиты Т-Кассы — создаём платёж и уводим человека на форму банка;
+ * доступ выдаст вебхук, увидев подтверждённый статус. Возврат человека на
+ * сайт оплатой не считается: эту страницу легко открыть руками.
  *
- * Одноразовый ключ формы (`nonce`) обязателен: без него двойной клик по
- * подвисшей странице продлевал подписку дважды. Ключ гасится при первой
- * отправке, повторная просто возвращает человека в кабинет.
+ * Реквизитов нет — прежнее поведение: подписка выдаётся сразу, чтобы можно
+ * было пройти весь сценарий на стенде.
  *
- * Модель: 1 аккаунт (email) = 1 подписка. Повторная оплата тем же email
- * продлевает существующую подписку (в том числе триал) — токен и ссылка не
- * меняются, заново ничего импортировать не нужно.
+ * Сумма считается ТОЛЬКО здесь, из тарифа по идентификатору: из браузера
+ * приходит лишь его название. Одноразовый ключ формы гасит двойной клик.
  */
 export async function POST(req: NextRequest) {
   const form = await req.formData();
@@ -34,7 +32,6 @@ export async function POST(req: NextRequest) {
   const store = getStore();
   const nonce = String(form.get("nonce") ?? "");
   if (!nonce || !(await store.consumeNonce(nonce))) {
-    // Повтор той же формы: ничего не списываем, показываем текущее состояние.
     await track(req.headers, "checkout_duplicate");
     return NextResponse.redirect(absoluteUrl(req, "/account"), { status: 303 });
   }
@@ -44,22 +41,71 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Неизвестный тариф" }, { status: 400 });
   }
   if (!email.includes("@") || email.length > 200) {
-    return NextResponse.json({ error: "Некорректный email" }, { status: 400 });
+    return NextResponse.json({ error: "Некорректная почта" }, { status: 400 });
   }
 
   const existing = await store.findSubByEmail(email);
-  await track(
-    req.headers,
-    existing ? (existing.isTrial ? "checkout_after_trial" : "checkout_renewal") : "checkout_new",
-    plan.id,
-  );
+  const event = existing
+    ? existing.isTrial
+      ? "checkout_after_trial"
+      : "checkout_renewal"
+    : "checkout_new";
 
+  if (acquiringConfigured()) {
+    const orderId = `irek-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const amount = priceKopecks(plan);
+    await store.createPayment({
+      orderId,
+      paymentId: null,
+      email,
+      planId: plan.id,
+      amount,
+      autoRenew,
+      status: "NEW",
+      paymentUrl: null,
+    });
+    try {
+      const r = await initPayment({
+        orderId,
+        amountKopecks: amount,
+        description: `${brand.name} — доступ на ${plan.title.toLowerCase()}`,
+        email,
+        notificationUrl: absoluteUrl(req, "/api/payments/notification").toString(),
+      });
+      if (!r.Success || !r.PaymentURL) {
+        await store.updatePayment(orderId, { status: "INIT_FAILED" });
+        console.error("[оплата] Init отклонён:", r.ErrorCode, r.Message, r.Details);
+        await track(req.headers, "checkout_init_failed");
+        return NextResponse.redirect(
+          absoluteUrl(req, `/checkout?plan=${plan.id}&err=bank`),
+          { status: 303 },
+        );
+      }
+      await store.updatePayment(orderId, {
+        paymentId: r.PaymentId ?? null,
+        status: r.Status ?? "NEW",
+        paymentUrl: r.PaymentURL,
+      });
+      // В лог — чтобы спорный платёж можно было найти по номеру заказа.
+      console.log(`[оплата] заказ ${orderId}: ${amount} коп., ${email}, статус ${r.Status}`);
+      await track(req.headers, event);
+      return NextResponse.redirect(r.PaymentURL, { status: 303 });
+    } catch (e) {
+      await store.updatePayment(orderId, { status: "INIT_ERROR" });
+      console.error("[оплата]", (e as Error).message);
+      await track(req.headers, "checkout_init_error");
+      return NextResponse.redirect(
+        absoluteUrl(req, `/checkout?plan=${plan.id}&err=bank`),
+        { status: 303 },
+      );
+    }
+  }
+
+  // Стендовый режим без реквизитов банка: выдаём доступ сразу.
+  await track(req.headers, event);
   const sub = await applyPayment(email, plan, autoRenew);
   notify(sub, "paid").catch(() => {});
-
-  const res = NextResponse.redirect(absoluteUrl(req, `/setup/${sub.token}`), {
-    status: 303,
-  });
+  const res = NextResponse.redirect(absoluteUrl(req, "/account?paid=1"), { status: 303 });
   setSession(res, sub.token);
   return res;
 }
