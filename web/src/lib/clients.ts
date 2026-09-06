@@ -1,128 +1,109 @@
 import { brand } from "./brand";
 
-export type Platform = "ios" | "android" | "windows" | "macos";
+export type Platform = "ios" | "android" | "windows" | "macos" | "linux";
 
 export type VpnClient = {
   id: string;
   name: string;
-  /** Короткое пояснение, почему пользователь может выбрать именно этот клиент. */
+  /** Короткое пояснение под названием. */
   note: string;
-  /** Ссылка на установку. Для Android может быть прямой APK. */
+  /** Ссылка на установку. */
   installUrl: string;
   /** Подпись к кнопке установки. */
   installLabel: string;
+  /** Второй способ установки, если основной подходит не всем. */
+  altInstallUrl?: string;
+  altInstallLabel?: string;
   /**
-   * Собирает deep-link, импортирующий подписку в клиент одним тапом.
+   * Собирает deep-link, импортирующий подписку одним тапом.
    *
-   * ВАЖНО: схемы отличаются между версиями приложений и иногда меняются.
-   * Перед запуском каждую нужно проверить руками на живом устройстве.
-   * Универсальный запасной путь — кнопка «Скопировать ссылку» и QR-код,
-   * они работают в любом клиенте независимо от схемы.
+   * Схема INCY взята из официальной документации docs.incy.cc/deep-links
+   * (проверено 06.09.2026): `incy://import/{url}` — автоопределение типа
+   * данных, URL передаётся как есть, без percent-кодирования.
+   * На живых устройствах ещё не проверена — запасной путь всегда рядом:
+   * кнопка «Копировать ссылку» и QR-код.
    */
   deepLink?: (subscriptionUrl: string) => string;
   recommended?: boolean;
 };
 
-const label = encodeURIComponent(brand.nameLatin);
+/**
+ * Каталог клиентов. Продуктовое решение 06.09.2026: только INCY, запасные
+ * клиенты убраны. INCY закрывает все платформы, ссылки — из официального
+ * репозитория INCY-DEV/incy-platforms и сторов.
+ *
+ * Пересматривать перед каждым релизом: доступность VPN-приложений в App Store
+ * и Google Play в РФ нестабильна. Если INCY пропадёт из стора, здесь
+ * понадобится запасной клиент — ручной импорт ссылкой и QR работает в любом.
+ */
+const RELEASES = "https://github.com/INCY-DEV/incy-platforms/releases/latest/download";
+const importLink = (url: string) => `incy://import/${url}`;
+
+const desktopNote =
+  "Десктопная версия у разработчика помечена как ранняя — пользоваться можно, но возможны шероховатости.";
 
 export const clientsByPlatform: Record<Platform, VpnClient[]> = {
   ios: [
     {
-      // Основной клиент по продуктовому решению 05.09.2026. Живой (v2.5.5,
-      // август 2026) и есть в российском App Store — смена региона не нужна.
-      // Deep-link схема пока не подтверждена — импорт через копирование ссылки.
-      id: "incy",
+      id: "incy-ios",
       name: "INCY",
-      note: "Бесплатный, есть в российском App Store — регион менять не нужно. После установки вставьте ссылку из блока ниже.",
+      note: "Бесплатное, есть в российском App Store — регион менять не нужно. Работает и на iPad, и на Apple TV.",
       installUrl: "https://apps.apple.com/ru/app/incy/id6756943388",
       installLabel: "Установить из App Store",
+      deepLink: importLink,
       recommended: true,
-    },
-    {
-      id: "streisand",
-      name: "Streisand",
-      note: "Бесплатный запасной вариант с импортом в один тап.",
-      installUrl: "https://apps.apple.com/app/streisand/id6450534064",
-      installLabel: "Установить из App Store",
-      deepLink: (url) => `streisand://import/${url}`,
-    },
-    {
-      id: "v2box",
-      name: "V2Box",
-      note: "Бесплатный. Ещё один запасной вариант.",
-      installUrl: "https://apps.apple.com/app/v2box-v2ray-client/id6446814690",
-      installLabel: "Установить из App Store",
-      deepLink: (url) =>
-        `v2box://install-sub?url=${encodeURIComponent(url)}&name=${label}`,
     },
   ],
   android: [
     {
-      // Тот же основной клиент, что и на iOS. Пакет llc.itdev.incy.
       id: "incy-android",
       name: "INCY",
-      note: "Бесплатный, ставится из Google Play. После установки вставьте ссылку из блока ниже.",
-      installUrl:
-        "https://play.google.com/store/apps/details?id=llc.itdev.incy",
+      note: "Бесплатное, ставится из Google Play. Если Play недоступен — рядом кнопка с APK-файлом.",
+      installUrl: "https://play.google.com/store/apps/details?id=llc.itdev.incy",
       installLabel: "Установить из Google Play",
+      altInstallUrl: `${RELEASES}/Incy.apk`,
+      altInstallLabel: "Скачать APK",
+      deepLink: importLink,
       recommended: true,
-    },
-    {
-      id: "v2rayng",
-      name: "v2rayNG",
-      note: "Бесплатный, ставится напрямую APK-файлом — Google Play не нужен.",
-      installUrl:
-        "https://github.com/2dust/v2rayNG/releases/latest",
-      installLabel: "Скачать APK",
-      deepLink: (url) => `v2rayng://install-sub?url=${encodeURIComponent(url)}`,
-    },
-    {
-      id: "happ",
-      name: "Happ",
-      note: "Бесплатный, есть в Google Play. Запасной вариант.",
-      installUrl:
-        "https://play.google.com/store/apps/details?id=com.happproxy",
-      installLabel: "Установить из Google Play",
-      deepLink: (url) => `happ://add/${url}`,
-    },
-  ],
-  windows: [
-    {
-      id: "clash-verge",
-      name: "Clash Verge Rev",
-      note: "Бесплатный, современный интерфейс, автообновление подписки.",
-      installUrl:
-        "https://github.com/clash-verge-rev/clash-verge-rev/releases/latest",
-      installLabel: "Скачать установщик",
-      deepLink: (url) => `clash://install-config?url=${encodeURIComponent(url)}`,
-      recommended: true,
-    },
-    {
-      id: "v2rayn",
-      name: "v2rayN",
-      note: "Бесплатный, максимум настроек. Для тех, кто любит контроль.",
-      installUrl: "https://github.com/2dust/v2rayN/releases/latest",
-      installLabel: "Скачать установщик",
     },
   ],
   macos: [
     {
-      id: "clash-verge-mac",
-      name: "Clash Verge Rev",
-      note: "Бесплатный, есть сборки под Apple Silicon и Intel.",
-      installUrl:
-        "https://github.com/clash-verge-rev/clash-verge-rev/releases/latest",
-      installLabel: "Скачать .dmg",
-      deepLink: (url) => `clash://install-config?url=${encodeURIComponent(url)}`,
+      id: "incy-macos",
+      name: "INCY",
+      note: "Бесплатное. Из App Store — для Mac на чипе Apple (M1 и новее). Для Mac на Intel рядом отдельная кнопка.",
+      installUrl: "https://apps.apple.com/ru/app/incy/id6756943388",
+      installLabel: "Установить из App Store",
+      altInstallUrl: `${RELEASES}/incy-macos-intel.dmg`,
+      altInstallLabel: "Скачать для Mac на Intel",
+      deepLink: importLink,
       recommended: true,
     },
+  ],
+  windows: [
     {
-      id: "streisand-mac",
-      name: "Streisand",
-      note: "Тот же клиент, что на iPhone — одна подписка на оба устройства.",
-      installUrl: "https://apps.apple.com/app/streisand/id6450534064",
-      installLabel: "Установить из App Store",
-      deepLink: (url) => `streisand://import/${url}`,
+      id: "incy-windows",
+      name: "INCY",
+      note: `Бесплатное, ставится обычным установщиком. ${desktopNote}`,
+      installUrl: `${RELEASES}/incy-windows-setup.exe`,
+      installLabel: "Скачать установщик",
+      altInstallUrl: `${RELEASES}/incy-windows-portable.zip`,
+      altInstallLabel: "Версия без установки (ZIP)",
+      deepLink: importLink,
+      recommended: true,
+    },
+  ],
+  linux: [
+    {
+      id: "incy-linux",
+      name: "INCY",
+      note: `Бесплатное. DEB — для Ubuntu, Debian и Mint. ${desktopNote}`,
+      installUrl: `${RELEASES}/incy-linux-x64.deb`,
+      installLabel: "Скачать DEB",
+      altInstallUrl: `${RELEASES}/incy-linux-x64.rpm`,
+      altInstallLabel: "Скачать RPM (Fedora, openSUSE)",
+      deepLink: importLink,
+      recommended: true,
     },
   ],
 };
@@ -132,6 +113,9 @@ export const platformLabels: Record<Platform, string> = {
   android: "Android",
   windows: "Windows",
   macos: "macOS",
+  linux: "Linux",
 };
 
-export const platformOrder: Platform[] = ["ios", "android", "windows", "macos"];
+export const platformOrder: Platform[] = ["ios", "android", "windows", "macos", "linux"];
+
+export const clientName = brand.nameLatin;

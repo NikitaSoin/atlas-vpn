@@ -28,6 +28,7 @@ export default async function RootLayout({
   const state = sub ? subState(sub) : null;
   const left = sub ? timeLeft(sub) : null;
   const viaVpn = viaOurVpn(hdrs);
+  // На узком экране в шапке помещается только короткая подпись.
   const cabinetLabel =
     sub && state && left
       ? state === "trial" || state === "active"
@@ -35,7 +36,8 @@ export default async function RootLayout({
         : state === "none"
           ? "Личный кабинет"
           : "Личный кабинет · истекла"
-      : "Войти";
+      : "Войти или зарегистрироваться";
+  const cabinetLabelShort = sub ? "Кабинет" : "Войти";
 
   return (
     <html lang="ru">
@@ -53,18 +55,18 @@ export default async function RootLayout({
               <span className="text-primary">IREK</span>
               <span className="-ml-1 text-accent-ink">VPN</span>
             </Link>
-            <nav className="flex items-center gap-6 text-[15px] text-muted">
-              <Link href="/#tarify" className="hover:text-fg">
+            <nav className="flex items-center gap-4 text-[15px] text-muted sm:gap-6">
+              <Link href="/#tarify" className="hidden hover:text-fg sm:inline">
                 Тарифы
               </Link>
-              <Link href="/#faq" className="hover:text-fg">
+              <Link href="/#faq" className="hidden hover:text-fg sm:inline">
                 Вопросы
               </Link>
               <Link href="/support" className="hover:text-fg">
                 Поддержка
               </Link>
               <Link
-                href={sub ? "/account" : "/start?login=1"}
+                href={sub ? "/account" : "/start"}
                 className={`rounded-full border px-3 py-1 text-sm ${
                   state === "grace" || state === "expired"
                     ? "border-bad/40 text-bad"
@@ -73,7 +75,8 @@ export default async function RootLayout({
                       : "border-line hover:text-fg"
                 }`}
               >
-                {cabinetLabel}
+                <span className="hidden sm:inline">{cabinetLabel}</span>
+                <span className="sm:hidden">{cabinetLabelShort}</span>
               </Link>
             </nav>
           </div>

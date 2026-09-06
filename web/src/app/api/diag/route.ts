@@ -130,12 +130,25 @@ export async function GET(req: NextRequest) {
     .catch((e: Error) => ({ ok: false, mode: usingMemoryStore ? "memory" : "postgres", error: e.message }));
   const panel = await panelProbe();
   const panelNet = await panelNetProbe();
+  // Куда сайт вообще дотягивается — чтобы понять, через что пускать запросы к панели.
+  const reach = Object.fromEntries(
+    await Promise.all(
+      [
+        ["telegram", "api.telegram.org"],
+        ["cloudflare", "cloudflare.com"],
+        ["workers.dev", "example.workers.dev"],
+        ["github", "api.github.com"],
+        ["riga-direct", "95.182.85.234"],
+      ].map(async ([name, host]) => [name, (await probe(host, 443, 6000)).ok]),
+    ),
+  );
   const smtp = smtpTarget();
   const smtpPort = smtp ? { ...smtp, ...(await probe(smtp.host, smtp.port)) } : null;
   return NextResponse.json({
     db,
     panel,
     panelNet,
+    reach,
     mail: mailConfigured(),
     smtpPort,
     telegram: telegramConfigured(),

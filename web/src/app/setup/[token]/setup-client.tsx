@@ -14,6 +14,7 @@ function detectPlatform(): Platform {
   if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
   if (/Android/i.test(ua)) return "android";
   if (/Macintosh|Mac OS X/i.test(ua)) return "macos";
+  if (/Linux|X11/i.test(ua)) return "linux";
   return "windows";
 }
 
@@ -90,6 +91,16 @@ export default function SetupClient({
               >
                 1. {client.installLabel}
               </a>
+              {client.altInstallUrl && (
+                <a
+                  href={client.altInstallUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-line px-4 py-2 text-sm text-muted transition hover:border-accent hover:text-fg"
+                >
+                  {client.altInstallLabel}
+                </a>
+              )}
               {client.deepLink && subscriptionUrl && (
                 <a
                   href={client.deepLink(subscriptionUrl)}

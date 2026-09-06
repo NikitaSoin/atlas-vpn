@@ -83,7 +83,7 @@ export default async function AccountPage({
   searchParams: Promise<{ new?: string; err?: string }>;
 }) {
   const sub = await currentSub();
-  if (!sub) redirect("/start?login=1");
+  if (!sub) redirect("/start");
   const { new: isNew, err } = await searchParams;
 
   const state = subState(sub);
