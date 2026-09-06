@@ -7,21 +7,18 @@ import SetupClient from "./[token]/setup-client";
 /**
  * Блок «настроить устройство» — общий для кабинета и страницы по личной
  * ссылке: выбор платформы, установка клиента, импорт одним тапом, QR.
- * Если доступ в панели ещё не заведён — пробуем завести прямо сейчас,
- * иначе показываем «готовим», страница обновится сама.
+ * Инструкция по установке показывается всегда; если доступ в панели ещё не
+ * заведён — пробуем завести сейчас, а ссылку для импорта отдаём, когда будет
+ * (страница обновляется сама).
  */
 export default async function SetupSection({ sub }: { sub: SubRecord }) {
   const ready = sub.panelToken ? sub : await provisionPanel(sub);
   if (!ready.panelToken) {
     return (
-      <div className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-5 text-sm">
-        <p className="font-medium text-amber-700">Готовим ваш доступ</p>
-        <p className="mt-1 text-muted">
-          Обычно это занимает меньше минуты. Страница обновится сама; если
-          ничего не изменится за несколько минут — напишите в поддержку.
-        </p>
+      <>
         <meta httpEquiv="refresh" content="30" />
-      </div>
+        <SetupClient subscriptionUrl={null} importLink={null} qrSvg={null} />
+      </>
     );
   }
   const panelSub = await getPanel().getSubscription(ready.panelToken);

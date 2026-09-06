@@ -22,10 +22,11 @@ export default function SetupClient({
   importLink,
   qrSvg,
 }: {
-  subscriptionUrl: string;
+  /** null — доступ в панели ещё готовится: показываем шаг установки, импорт — позже. */
+  subscriptionUrl: string | null;
   /** Что копируем и кодируем в QR: vless:// пока нет домена, потом — подписка. */
-  importLink: string;
-  qrSvg: string;
+  importLink: string | null;
+  qrSvg: string | null;
 }) {
   const [platform, setPlatform] = useState<Platform>("ios");
   const [copied, setCopied] = useState(false);
@@ -34,6 +35,7 @@ export default function SetupClient({
   useEffect(() => setPlatform(detectPlatform()), []);
 
   async function copy() {
+    if (!importLink) return;
     await navigator.clipboard.writeText(importLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -88,7 +90,7 @@ export default function SetupClient({
               >
                 1. {client.installLabel}
               </a>
-              {client.deepLink && (
+              {client.deepLink && subscriptionUrl && (
                 <a
                   href={client.deepLink(subscriptionUrl)}
                   className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition hover:brightness-110"
@@ -96,11 +98,28 @@ export default function SetupClient({
                   2. Добавить подписку
                 </a>
               )}
+              {client.deepLink && !subscriptionUrl && (
+                <span className="rounded-xl border border-dashed border-line px-4 py-2 text-sm text-muted">
+                  2. Ссылка для импорта появится через минуту
+                </span>
+              )}
             </div>
           </div>
         ))}
       </div>
 
+      {!importLink && (
+        <div className="mt-8 rounded-2xl border border-amber-500/50 bg-amber-500/10 p-5 text-sm">
+          <p className="font-medium text-amber-700">Готовим ваш доступ</p>
+          <p className="mt-1 text-muted">
+            Пока ставьте приложение — шаг 1 выше. Ссылка для импорта появится
+            здесь сама, обычно меньше чем через минуту. Если её нет дольше
+            нескольких минут — напишите в поддержку.
+          </p>
+        </div>
+      )}
+
+      {importLink && (
       <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
         <h3 className="font-medium">Если кнопка не сработала</h3>
         <p className="mt-1.5 text-sm text-muted">
@@ -124,13 +143,14 @@ export default function SetupClient({
         >
           {showQr ? "Скрыть QR-код" : "Показать QR-код для другого устройства"}
         </button>
-        {showQr && (
+        {showQr && qrSvg && (
           <div
             className="mt-4 w-44 rounded-xl bg-white p-3"
             dangerouslySetInnerHTML={{ __html: qrSvg }}
           />
         )}
       </div>
+      )}
     </div>
   );
 }
