@@ -29,4 +29,19 @@ export async function register() {
   setInterval(provisionTick, 60_000);
   setTimeout(tick, 30_000);
   setInterval(tick, 10 * 60_000);
+
+  // Чистка статистики: храним не дольше, чем нужно для цели (ч. 7 ст. 5
+  // 152-ФЗ). Срок задаётся EVENTS_RETENTION_DAYS, по умолчанию год.
+  const { getStore } = await import("./lib/db");
+  const purge = async () => {
+    try {
+      const days = Number(process.env.EVENTS_RETENTION_DAYS ?? 365);
+      const removed = await getStore().purgeOldEvents(days);
+      if (removed) console.log(`[статистика] удалено записей старше ${days} дней: ${removed}`);
+    } catch (e) {
+      console.error("[статистика]", (e as Error).message);
+    }
+  };
+  setTimeout(purge, 60_000);
+  setInterval(purge, 24 * 60 * 60_000);
 }

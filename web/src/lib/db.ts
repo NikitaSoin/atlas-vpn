@@ -142,6 +142,16 @@ export interface Store {
   createNonce(ttlMinutes: number): Promise<string>;
   /** true — ключ был и погашен сейчас; false — уже использован или просрочен. */
   consumeNonce(token: string): Promise<boolean>;
+  /**
+   * Удалить учётную запись и связанные данные по требованию пользователя
+   * (ст. 14, 21 152-ФЗ). Сведения о платежах и факт согласия сохраняются в
+   * обезличенном виде: первое нужно для бухгалтерского учёта, второе —
+   * доказательство, что согласие когда-то было получено законно.
+   * Возвращает удалённую подписку, чтобы вызвавший отозвал доступ в панели.
+   */
+  deleteAccount(token: string): Promise<SubRecord | null>;
+  /** Удалить статистику старше указанного числа дней. Возвращает число строк. */
+  purgeOldEvents(days: number): Promise<number>;
   /** Аккаунты, для которых доступ в панели ещё не заведён. */
   listUnprovisioned(limit: number): Promise<SubRecord[]>;
   /** Последние подписки — для админки. */
@@ -538,6 +548,30 @@ class PgStore implements Store {
     return rows.length > 0;
   }
 
+  async deleteAccount(token: string) {
+    const sub = await this.findSubByToken(token);
+    if (!sub) return null;
+    await this.q(
+      "DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE email = $1)",
+      [sub.email],
+    );
+    await this.q("DELETE FROM tickets WHERE email = $1", [sub.email]);
+    await this.q("DELETE FROM email_codes WHERE email = $1", [sub.email]);
+    await this.q("DELETE FROM subscriptions WHERE token = $1", [token]);
+    const masked = `удалён-${randomBytes(6).toString("hex")}`;
+    await this.q("UPDATE payments SET email = $2 WHERE email = $1", [sub.email, masked]);
+    await this.q("UPDATE consents SET email = $2 WHERE email = $1", [sub.email, masked]);
+    return sub;
+  }
+
+  async purgeOldEvents(days: number) {
+    const { rows } = await this.q(
+      "DELETE FROM events WHERE created_at < now() - ($1 || ' days')::interval RETURNING id",
+      [days],
+    );
+    return rows.length;
+  }
+
   async listUnprovisioned(limit: number) {
     const { rows } = await this.q(
       "SELECT * FROM subscriptions WHERE panel_token IS NULL AND plan_id <> 'none' ORDER BY created_at LIMIT $1",
@@ -801,6 +835,23 @@ class MemoryStore implements Store {
     const exp = this.nonces.get(token);
     this.nonces.delete(token);
     return Boolean(exp && exp > new Date());
+  }
+  async deleteAccount(token: string) {
+    const sub = this.subs.find((s) => s.token === token);
+    if (!sub) return null;
+    this.subs = this.subs.filter((s) => s.token !== token);
+    this.tickets = this.tickets.filter((t) => t.email !== sub.email);
+    this.codes.delete(sub.email);
+    const masked = `удалён-${randomBytes(6).toString("hex")}`;
+    for (const p of this.payments) if (p.email === sub.email) p.email = masked;
+    for (const c of this.consents) if (c.email === sub.email) c.email = masked;
+    return sub;
+  }
+  async purgeOldEvents(days: number) {
+    const edge = Date.now() - days * 86400_000;
+    const before = this.events.length;
+    this.events = this.events.filter((e) => e.createdAt.getTime() >= edge);
+    return before - this.events.length;
   }
   async listUnprovisioned(limit: number) {
     return this.subs.filter((s) => !s.panelToken && s.planId !== "none").slice(0, limit);

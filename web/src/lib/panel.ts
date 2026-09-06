@@ -48,6 +48,8 @@ export type UpdateInput = {
 export interface Panel {
   createSubscription(input: CreateInput): Promise<Subscription>;
   getSubscription(token: string): Promise<Subscription | null>;
+  /** Удалить доступ в панели. Вызывается при удалении аккаунта на сайте. */
+  deleteSubscription(token: string): Promise<boolean>;
   /**
    * Новый срок и (опционально) лимит. Сайт — источник правды по датам.
    * `userId` — числовой id из панели: если он известен, лишний поисковый
@@ -122,6 +124,10 @@ class MockPanel implements Panel {
     if (!sub) return null;
     sub.expiresAt = expiresAt;
     return sub;
+  }
+
+  async deleteSubscription(token: string) {
+    return this.store.delete(token);
   }
 }
 
@@ -199,6 +205,8 @@ class RemnawavePanel implements Panel {
         const body = await res.text().catch(() => "");
         throw new Error(`Panel ${res.status} ${path}: ${body.slice(0, 200)}`);
       }
+      // DELETE отвечает 204 без тела — разбирать нечего.
+      if (res.status === 204) return undefined as T;
       return res.json() as Promise<T>;
     }
     throw new Error(`Панель недоступна ни напрямую, ни через ретранслятор: ${lastError?.message}`);
@@ -273,6 +281,25 @@ class RemnawavePanel implements Panel {
       return await this.toSubscription(found.response, withLink);
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Удаление пользователя из панели. Панель принимает uuid, а у нас хранится
+   * короткий идентификатор, поэтому uuid берём поиском.
+   */
+  async deleteSubscription(token: string) {
+    try {
+      const found = await this.request<{ response: { uuid?: string } }>(
+        `/api/users/by-short-uuid/${token}`,
+      );
+      const uuid = found.response?.uuid;
+      if (!uuid) return false;
+      await this.request(`/api/users/${uuid}`, { method: "DELETE" });
+      return true;
+    } catch (e) {
+      console.error("[panel] удаление не удалось:", (e as Error).message);
+      return false;
     }
   }
 

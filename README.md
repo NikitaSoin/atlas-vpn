@@ -185,6 +185,9 @@ SUBSCRIPTION_HOST=https://sub.example.com
 | `PRICE_<ТАРИФ>_KOPECKS` | цена в копейках, если надо поменять без релиза (`PRICE_M6_KOPECKS=135000`) |
 | `SMTP_URL`, `MAIL_FROM` | почта: `smtps://user:pass@host:465`; `SMTP_URL=log` печатает письма в консоль (разработка) |
 | `REMINDERS_DISABLED=1` | выключить планировщик напоминаний (для тестов) |
+| `COMPANY_NAME`, `COMPANY_OGRNIP`, `COMPANY_INN`, `COMPANY_ADDRESS`, `COMPANY_EMAIL` | реквизиты ИП в подвале и в документах (ст. 9 ЗоЗПП); без них подвал показывает предупреждение |
+| `ANALYTICS_SALT` | секретная строка для обезличивания IP в статистике; менять нельзя — иначе старые и новые отпечатки перестанут совпадать |
+| `EVENTS_RETENTION_DAYS` | сколько дней хранить статистику, по умолчанию 365 |
 
 ### IP сервера панели заблокирован в сети Timeweb
 

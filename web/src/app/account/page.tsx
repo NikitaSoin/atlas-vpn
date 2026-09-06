@@ -231,6 +231,37 @@ export default async function AccountPage({
           </a>
         </div>
       </section>
+
+      <section className="mt-6 rounded-2xl border border-line/60 bg-ink p-5">
+        <h2 className="font-medium">Удалить аккаунт</h2>
+        <p className="mt-1.5 text-sm text-muted">
+          Удалим учётную запись, доступ к VPN и переписку с поддержкой. Сведения
+          об оплатах сохранятся в обезличенном виде — этого требует закон о
+          бухгалтерском учёте. Отменить удаление нельзя, оставшийся срок доступа
+          сгорит.
+        </p>
+        {err === "confirm" && (
+          <p className="mt-2 text-sm text-bad">
+            Чтобы удалить аккаунт, введите слово «удалить».
+          </p>
+        )}
+        <form action="/api/account" method="POST" className="mt-4 flex flex-wrap gap-2">
+          <input type="hidden" name="action" value="delete_account" />
+          <input
+            type="text"
+            name="confirm"
+            required
+            placeholder="Введите «удалить»"
+            className="min-w-48 flex-1 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-bad"
+          />
+          <button
+            type="submit"
+            className="rounded-xl border border-bad/50 px-4 py-2.5 text-sm text-bad transition hover:bg-bad/10"
+          >
+            Удалить навсегда
+          </button>
+        </form>
+      </section>
     </main>
   );
 }
