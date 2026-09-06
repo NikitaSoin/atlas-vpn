@@ -19,12 +19,39 @@ import { createHash, timingSafeEqual } from "node:crypto";
 const API_URL = () => (process.env.TBANK_API_URL ?? "https://securepay.tbank.ru/v2").replace(/\/$/, "");
 const TIMEOUT_MS = () => Number(process.env.TBANK_TIMEOUT ?? 20) * 1000;
 
-export const acquiringConfigured = () =>
-  Boolean(process.env.TBANK_TERMINAL_KEY && process.env.TBANK_PASSWORD);
+/**
+ * Реквизиты из переменных окружения. `trim()` обязателен: панель хостинга
+ * легко добавляет пробел или перевод строки в конец значения, и банк
+ * отвечает «терминал не найден» на внешне правильный ключ.
+ */
+export const terminalKey = () => (process.env.TBANK_TERMINAL_KEY ?? "").trim();
+export const terminalPassword = () => (process.env.TBANK_PASSWORD ?? "").trim();
+
+export const acquiringConfigured = () => Boolean(terminalKey() && terminalPassword());
 
 /** Демо-терминал виден по суффиксу DEMO — на витрине показываем плашку. */
-export const acquiringDemo = () =>
-  (process.env.TBANK_TERMINAL_KEY ?? "").toUpperCase().endsWith("DEMO");
+export const acquiringDemo = () => terminalKey().toUpperCase().endsWith("DEMO");
+
+/** Что реально приехало в переменные — без раскрытия секретов. */
+export function credentialsShape() {
+  const key = process.env.TBANK_TERMINAL_KEY ?? "";
+  const pass = process.env.TBANK_PASSWORD ?? "";
+  return {
+    ключ: {
+      длина: key.length,
+      обрезкаПробелов: key !== key.trim(),
+      хвост: key.trim().slice(-4),
+      ожидается: "17 символов, хвост DEMO",
+    },
+    пароль: {
+      длина: pass.length,
+      обрезкаПробелов: pass !== pass.trim(),
+      хвост: pass.trim().slice(-2),
+      решёток: (pass.match(/#/g) ?? []).length,
+      ожидается: "16 символов, хвост $J, решёток 3",
+    },
+  };
+}
 
 type Flat = Record<string, string | number | boolean | null | undefined>;
 
@@ -51,7 +78,7 @@ export function makeToken(params: Flat, password: string): string {
 
 /** Проверка подписи нотификации за постоянное время. */
 export function verifyNotification(body: Flat): boolean {
-  const password = process.env.TBANK_PASSWORD;
+  const password = terminalPassword();
   const got = String(body.Token ?? "");
   if (!password || !got) return false;
   const expected = makeToken(body, password);
@@ -61,8 +88,8 @@ export function verifyNotification(body: Flat): boolean {
 }
 
 async function call<T>(method: string, params: Flat): Promise<T> {
-  const password = process.env.TBANK_PASSWORD!;
-  const body = { ...params, TerminalKey: process.env.TBANK_TERMINAL_KEY, Token: "" };
+  const password = terminalPassword();
+  const body = { ...params, TerminalKey: terminalKey(), Token: "" };
   body.Token = makeToken(body, password);
   const res = await fetch(`${API_URL()}/${method}`, {
     method: "POST",
