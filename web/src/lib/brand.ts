@@ -36,8 +36,16 @@ export type Company = {
   name: string;
   ogrnip: string;
   inn: string;
+  /** Адрес регистрации. В подвале не показывается — только в оферте. */
   address: string;
   email: string;
+  bank: {
+    name: string;
+    account: string;
+    bik: string;
+    corr: string;
+    inn: string;
+  };
 };
 
 export function getCompany(): Company {
@@ -48,6 +56,13 @@ export function getCompany(): Company {
     inn: process.env.COMPANY_INN?.trim() ?? "",
     address: process.env.COMPANY_ADDRESS?.trim() ?? "",
     email: process.env.COMPANY_EMAIL?.trim() ?? "",
+    bank: {
+      name: process.env.COMPANY_BANK_NAME?.trim() ?? "",
+      account: process.env.COMPANY_BANK_ACCOUNT?.trim() ?? "",
+      bik: process.env.COMPANY_BANK_BIK?.trim() ?? "",
+      corr: process.env.COMPANY_BANK_CORR?.trim() ?? "",
+      inn: process.env.COMPANY_BANK_INN?.trim() ?? "",
+    },
   };
 }
 

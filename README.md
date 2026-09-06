@@ -185,7 +185,9 @@ SUBSCRIPTION_HOST=https://sub.example.com
 | `PRICE_<ТАРИФ>_KOPECKS` | цена в копейках, если надо поменять без релиза (`PRICE_M6_KOPECKS=135000`) |
 | `SMTP_URL`, `MAIL_FROM` | почта: `smtps://user:pass@host:465`; `SMTP_URL=log` печатает письма в консоль (разработка) |
 | `REMINDERS_DISABLED=1` | выключить планировщик напоминаний (для тестов) |
-| `COMPANY_NAME`, `COMPANY_OGRNIP`, `COMPANY_INN`, `COMPANY_ADDRESS`, `COMPANY_EMAIL` | реквизиты ИП в подвале и в документах (ст. 9 ЗоЗПП); без них подвал показывает предупреждение |
+| `COMPANY_NAME`, `COMPANY_OGRNIP`, `COMPANY_INN`, `COMPANY_EMAIL` | реквизиты ИП в подвале и в оферте (ст. 9 ЗоЗПП); без них подвал показывает предупреждение |
+| `COMPANY_ADDRESS` | адрес регистрации — только в оферте, в подвале не показывается: для ИП это домашний адрес |
+| `COMPANY_BANK_NAME`, `COMPANY_BANK_ACCOUNT`, `COMPANY_BANK_BIK`, `COMPANY_BANK_CORR`, `COMPANY_BANK_INN` | банковские реквизиты в разделе 17 оферты |
 | `ANALYTICS_SALT` | секретная строка для обезличивания IP в статистике; менять нельзя — иначе старые и новые отпечатки перестанут совпадать |
 | `EVENTS_RETENTION_DAYS` | сколько дней хранить статистику, по умолчанию 365 |
 

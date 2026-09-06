@@ -112,10 +112,13 @@ export default async function RootLayout({
             <p className="mt-4 border-t border-line/60 pt-4 text-xs leading-relaxed">
               {companyFilled(company) ? (
                 <>
+                  {/* Адрес регистрации в подвале не показываем: для ИП
+                      ст. 9 ЗоЗПП требует ФИО и сведения о госрегистрации,
+                      а адрес — это домашний адрес предпринимателя. Полные
+                      реквизиты есть в оферте. */}
                   {company.form} {company.name}
                   {company.ogrnip && <> · ОГРНИП {company.ogrnip}</>}
                   {company.inn && <> · ИНН {company.inn}</>}
-                  {company.address && <> · {company.address}</>}
                   {company.email && <> · {company.email}</>}
                 </>
               ) : (

@@ -38,7 +38,26 @@ function fillCompany(text: string): string {
   }
   if (company.ogrnip) out = out.replace(/ОГРНИП `\[…\]`/g, `ОГРНИП \`${company.ogrnip}\``);
   if (company.inn) out = out.replace(/ИНН `\[…\]`/g, `ИНН \`${company.inn}\``);
-  return out;
+  return out.replace("{{РЕКВИЗИТЫ}}", requisitesBlock());
+}
+
+/** Блок реквизитов для последнего раздела оферты. */
+function requisitesBlock(): string {
+  const c = getCompany();
+  if (!c.name) return "Реквизиты будут указаны после регистрации сервиса.";
+  const lines = [
+    `${c.form} ${c.name}`,
+    c.ogrnip && `ОГРНИП: ${c.ogrnip}`,
+    c.inn && `ИНН: ${c.inn}`,
+    c.address && `Адрес: ${c.address}`,
+    c.email && `Электронная почта: ${c.email}`,
+    c.bank.account && `Расчётный счёт: ${c.bank.account}`,
+    c.bank.name && `Банк: ${c.bank.name}`,
+    c.bank.bik && `БИК: ${c.bank.bik}`,
+    c.bank.corr && `Корреспондентский счёт: ${c.bank.corr}`,
+    c.bank.inn && `ИНН банка: ${c.bank.inn}`,
+  ].filter(Boolean);
+  return lines.join("\n");
 }
 
 export async function readLegalDoc(id: LegalDocId): Promise<string> {
