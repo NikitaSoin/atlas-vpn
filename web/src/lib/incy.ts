@@ -22,51 +22,35 @@
  * профиля — и нельзя подставлять текущее время: иначе клиент будет считать
  * профиль новым при каждом обновлении подписки и заново качать геофайлы.
  */
-const PROFILE_VERSION = "1788739200"; // 07.09.2026
+const PROFILE_VERSION = "1788746400"; // 07.09.2026, вторая редакция
 
-const ROUTING_PROFILE = {
-  Name: "IREK VPN",
-  // Всё, что не попало в правила ниже, идёт через тоннель. Это же и страховка:
-  // если геофайлы у клиента почему-то не поднялись и правила не сработали,
-  // трафик пойдёт через VPN, а не мимо него.
-  GlobalProxy: "true",
-  LastUpdated: PROFILE_VERSION,
-
-  // DNS для зарубежных ресурсов — шифрованный, через тоннель. Простой UDP
-  // здесь не годится: его подменяют по дороге, и половина сайтов «не находится».
-  RemoteDNSType: "DoH",
-  RemoteDNSDomain: "https://cloudflare-dns.com/dns-query",
-  RemoteDNSIP: "1.1.1.1",
-  // DNS для российских ресурсов — напрямую и обычным UDP: DoH-адреса из России
-  // отвечают нестабильно, а Яндекс доступен всегда.
-  DomesticDNSType: "DoU",
-  DomesticDNSDomain: "",
-  DomesticDNSIP: "77.88.8.8",
-  // Адрес DoH-сервера надо знать до того, как заработает DNS.
-  DnsHosts: { "cloudflare-dns.com": "1.1.1.1" },
-
-  // Российские сайты и адреса — мимо тоннеля: банки и госуслуги не любят
-  // зарубежные IP, да и быстрее так.
-  DirectSites: ["geosite:ru"],
-  DirectIp: [
-    "geoip:ru",
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "169.254.0.0/16",
-    "224.0.0.0/4",
-    "255.255.255.255",
-  ],
-  ProxySites: [],
-  ProxyIp: [],
-  // Ничего не режем: блокировка рекламы ломает часть сайтов, а решать за
-  // пользователя, что ему не показывать, мы не подписывались.
-  BlockSites: [],
-  BlockIp: [],
-
-  DomainStrategy: "IPIfNonMatch",
-  FakeDNS: "false",
-} as const;
+/**
+ * Российские ресурсы, которые пускаем мимо тоннеля. Здесь ТОЛЬКО конкретные
+ * домены: гео-категории (`geosite:ru`, `geoip:ru`) использовать нельзя.
+ * Проверено на устройстве владельца 07.09.2026 — приложение не смогло собрать
+ * конфигурацию целиком:
+ *   common/geodata: illegal domain rule: geosite:ru
+ *   common/geodata: failed to check code RU from geosite.dat > EOF
+ * То есть вшитый в приложение гео-файл кода RU не содержит, и одно такое
+ * правило роняет весь профиль, а вместе с ним и подключение.
+ */
+const RU_DIRECT = [
+  // Госуслуги, налоговая, городские сервисы
+  "gosuslugi.ru", "nalog.gov.ru", "nalog.ru", "mos.ru", "pfr.gov.ru", "sfr.gov.ru",
+  // Банки: с зарубежного адреса они часто просто не пускают
+  "sberbank.ru", "sber.ru", "vtb.ru", "alfabank.ru", "tbank.ru", "tinkoff.ru",
+  "gazprombank.ru", "raiffeisen.ru", "psbank.ru", "open.ru", "sovcombank.ru",
+  "mkb.ru", "rshb.ru", "pochtabank.ru", "nspk.ru", "mironline.ru",
+  // Почта, поиск, карты, медиа
+  "yandex.ru", "ya.ru", "yandex.net", "yandex.com", "mail.ru", "vk.com", "vk.ru",
+  "ok.ru", "userapi.com", "mycdn.me", "dzen.ru", "kinopoisk.ru", "rutube.ru",
+  "2gis.ru", "rambler.ru", "lenta.ru", "rbc.ru", "ria.ru",
+  // Маркетплейсы и доставка
+  "ozon.ru", "wildberries.ru", "avito.ru", "dns-shop.ru", "mvideo.ru",
+  "sbermarket.ru", "delivery-club.ru", "samokat.ru",
+  // Операторы связи
+  "mts.ru", "megafon.ru", "beeline.ru", "tele2.ru", "rt.ru",
+];
 
 /** Значение заголовка `routing`: добавить профиль и сразу включить его. */
 export function incyRoutingHeader(): string {
