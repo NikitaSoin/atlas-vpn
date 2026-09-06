@@ -115,6 +115,40 @@ export async function getState(paymentId: string): Promise<StateResult> {
 }
 
 /** Деньги получены: начисляем и на AUTHORIZED (холд), и на CONFIRMED. */
+/**
+ * Живая проверка связи с банком: Init на рубль, в базу ничего не пишет.
+ * Нужна, чтобы отличить «банк отказал» от «мы туда не ходим» до того, как
+ * первый живой человек нажмёт «Оплатить».
+ */
+export async function probePayments(): Promise<{
+  ok: boolean;
+  demo: boolean;
+  errorCode?: string;
+  message?: string;
+  ms: number;
+}> {
+  const t0 = Date.now();
+  if (!acquiringConfigured()) return { ok: false, demo: false, message: "реквизиты не заданы", ms: 0 };
+  try {
+    const r = await initPayment({
+      orderId: `probe-${Date.now()}`,
+      amountKopecks: 100,
+      description: "Проверка связи",
+      email: "probe@example.com",
+      notificationUrl: "https://example.invalid/probe",
+    });
+    return {
+      ok: Boolean(r.Success),
+      demo: acquiringDemo(),
+      errorCode: r.ErrorCode,
+      message: r.Message ?? r.Details,
+      ms: Date.now() - t0,
+    };
+  } catch (e) {
+    return { ok: false, demo: acquiringDemo(), message: (e as Error).message, ms: Date.now() - t0 };
+  }
+}
+
 export const PAID_STATUSES = new Set(["CONFIRMED", "AUTHORIZED"]);
 /** Возврат: доступ надо забрать обратно, иначе возврат станет подарком. */
 export const REFUND_STATUSES = new Set(["REFUNDED", "REVERSED", "PARTIAL_REFUNDED"]);

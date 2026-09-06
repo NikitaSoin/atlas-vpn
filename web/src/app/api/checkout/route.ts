@@ -73,11 +73,14 @@ export async function POST(req: NextRequest) {
         notificationUrl: absoluteUrl(req, "/api/payments/notification").toString(),
       });
       if (!r.Success || !r.PaymentURL) {
-        await store.updatePayment(orderId, { status: "INIT_FAILED" });
+        await store.updatePayment(orderId, { status: `INIT_FAILED_${r.ErrorCode ?? "?"}` });
         console.error("[оплата] Init отклонён:", r.ErrorCode, r.Message, r.Details);
         await track(req.headers, "checkout_init_failed");
+        // 501 «терминал не найден» — проблема настройки, а не денег клиента:
+        // человеку про «попробуйте ещё раз» писать нечестно.
+        const kind = r.ErrorCode === "501" ? "terminal" : "bank";
         return NextResponse.redirect(
-          absoluteUrl(req, `/checkout?plan=${plan.id}&err=bank`),
+          absoluteUrl(req, `/checkout?plan=${plan.id}&err=${kind}`),
           { status: 303 },
         );
       }

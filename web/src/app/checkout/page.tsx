@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { findPlan, plans } from "@/lib/plans";
+import { brand } from "@/lib/brand";
 import { currentSub } from "@/lib/session";
 import { getStore } from "@/lib/db";
 import { acquiringConfigured, acquiringDemo } from "@/lib/acquiring";
@@ -46,6 +47,18 @@ export default async function CheckoutPage({
           <p className="mt-4 rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">
             Банк не принял платёж — попробуйте ещё раз через минуту. Деньги не
             списаны. Если повторится, напишите в поддержку.
+          </p>
+        )}
+        {err === "terminal" && (
+          <p className="mt-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+            <span className="font-medium text-amber-700">Оплата временно недоступна.</span>{" "}
+            <span className="text-muted">
+              Мы уже чиним — это на нашей стороне, деньги не списаны. Напишите в{" "}
+              <a href={brand.supportTelegram} className="underline" target="_blank" rel="noreferrer">
+                поддержку
+              </a>
+              , подключим доступ вручную.
+            </span>
           </p>
         )}
         {acquiringDemo() && (

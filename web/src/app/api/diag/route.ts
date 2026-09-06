@@ -4,7 +4,7 @@ import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
 import { X509Certificate } from "node:crypto";
 import { panelProxyUrl, usingMockPanel } from "@/lib/panel";
 import { mailConfigured } from "@/lib/mail";
-import { acquiringConfigured, acquiringDemo } from "@/lib/acquiring";
+import { acquiringConfigured, acquiringDemo, probePayments } from "@/lib/acquiring";
 import { telegramConfigured } from "@/lib/telegram";
 import { siteUrl } from "@/lib/site";
 import { connect } from "node:net";
@@ -149,6 +149,7 @@ export async function GET(req: NextRequest) {
     .catch((e: Error) => ({ ok: false, mode: usingMemoryStore ? "memory" : "postgres", error: e.message }));
   const panel = await panelProbe();
   const panelNet = await panelNetProbe();
+  const payments = acquiringConfigured() ? await probePayments() : null;
   // Куда сайт вообще дотягивается — чтобы понять, через что пускать запросы к панели.
   const reach = Object.fromEntries(
     await Promise.all(
@@ -170,6 +171,7 @@ export async function GET(req: NextRequest) {
     reach,
     mail: mailConfigured(),
     acquiring: acquiringConfigured() ? (acquiringDemo() ? "демо-терминал" : "боевой терминал") : false,
+    payments,
     smtpPort,
     telegram: telegramConfigured(),
     siteUrl: siteUrl(),
