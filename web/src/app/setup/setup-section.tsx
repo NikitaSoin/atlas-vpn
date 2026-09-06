@@ -12,7 +12,11 @@ import SetupClient from "./[token]/setup-client";
  * его сама по авто-обновлению. Инструкция по установке видна всегда.
  */
 export default async function SetupSection({ sub }: { sub: SubRecord }) {
-  const importLink = sub.panelLink ?? sub.panelUrl;
+  // Отдаём ССЫЛКУ-ПОДПИСКУ, а не один сервер: в подписке лежат все входы
+  // сразу (прямой и через Cloudflare), приложение выберет рабочий и само
+  // подхватит новые, когда мы их добавим. Одиночный vless:// — запасной
+  // вариант на случай, если подписка почему-то не сохранилась.
+  const importLink = sub.panelUrl ?? sub.panelLink;
   const qrSvg = importLink
     ? await QRCode.toString(importLink, { type: "svg", margin: 0, width: 160 })
     : null;

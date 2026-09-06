@@ -141,7 +141,9 @@ export default function SetupClient({
         <h3 className="font-medium">Если кнопка не сработала</h3>
         <p className="mt-1.5 text-sm text-muted">
           Скопируйте ссылку и вставьте её в приложении — пункт «Добавить
-          подписку» или «Add subscription». Работает в любом клиенте.
+          подписку» или «Add subscription». Именно подписку, а не отдельный
+          сервер: в ней несколько точек входа, приложение выберет рабочую и
+          обновит их само, если мы что-то поменяем.
         </p>
         <div className="mt-4 flex gap-2">
           <code className="flex-1 truncate rounded-xl border border-line bg-ink px-4 py-2.5 text-sm text-muted">
