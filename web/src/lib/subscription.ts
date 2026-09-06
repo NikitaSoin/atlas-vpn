@@ -92,10 +92,14 @@ export async function provisionPending(): Promise<number> {
 }
 
 /** Регистрация: просто аккаунт. Триал или тариф человек выбирает сам в кабинете. */
-export async function createAccount(email: string): Promise<SubRecord> {
+export async function createAccount(
+  email: string,
+  passwordHash: string | null = null,
+): Promise<SubRecord> {
   return getStore().createSub({
     token: newAccountToken(),
     email,
+    passwordHash,
     planId: "none",
     months: 0,
     autoRenew: false,

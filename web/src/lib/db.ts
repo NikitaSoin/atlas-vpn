@@ -21,6 +21,8 @@ export type SubRecord = {
   isTrial: boolean;
   /** Пробный период уже брали — второй не даём. */
   trialUsed: boolean;
+  /** Хеш пароля (scrypt). null — аккаунт создан до введения паролей. */
+  passwordHash: string | null;
   /**
    * Идентификатор пользователя в VPN-панели (shortUuid). null — доступ ещё
    * не заведён: панель была недоступна при регистрации, планировщик
@@ -162,10 +164,23 @@ export interface Store {
    */
   listDueReminders(hours: number): Promise<{ sub: SubRecord; kind: ReminderKind }[]>;
   markNotified(token: string, kind: ReminderKind): Promise<void>;
-  /** Код подтверждения почты (регистрация и вход). Живёт `ttlMinutes`. */
-  createEmailCode(email: string, ttlMinutes: number): Promise<string>;
-  /** true — код верный и не просрочен; код гасится при любом исходе проверки. */
-  consumeEmailCode(email: string, code: string): Promise<boolean>;
+  /**
+   * Код подтверждения почты. `pending` переносится в аккаунт при удачной
+   * проверке: так пароль, заданный при регистрации, доживает до момента
+   * создания записи и до тех пор нигде не лежит в открытом виде.
+   */
+  createEmailCode(
+    email: string,
+    ttlMinutes: number,
+    pending?: { passwordHash?: string | null; kind?: string },
+  ): Promise<string>;
+  /** null — код неверный или просрочен. Код гасится при любом исходе. */
+  consumeEmailCode(
+    email: string,
+    code: string,
+  ): Promise<{ passwordHash: string | null; kind: string } | null>;
+  /** Задать или сменить пароль аккаунта. */
+  setPassword(token: string, passwordHash: string): Promise<void>;
   createTicket(email: string, body: string): Promise<Ticket>;
   getTicketByToken(token: string): Promise<Ticket | null>;
   getTicketById(id: number): Promise<Ticket | null>;
@@ -177,7 +192,7 @@ export interface Store {
 export type NewSub = Pick<
   SubRecord,
   "token" | "email" | "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial"
-> & { panelToken?: string | null };
+> & { panelToken?: string | null; passwordHash?: string | null };
 
 /** Наш собственный токен аккаунта — хвост личной ссылки, не зависит от панели. */
 export function newAccountToken(): string {
@@ -251,6 +266,9 @@ CREATE TABLE IF NOT EXISTS email_codes (
   code        TEXT NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL
 );
+ALTER TABLE email_codes ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE email_codes ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'signup';
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS password_hash TEXT;
 CREATE TABLE IF NOT EXISTS tickets (
   id          SERIAL PRIMARY KEY,
   token       TEXT UNIQUE NOT NULL,
@@ -382,6 +400,7 @@ class PgStore implements Store {
       createdAt: new Date(r.created_at as string),
       isTrial: Boolean(r.is_trial),
       trialUsed: Boolean(r.trial_used),
+      passwordHash: (r.password_hash as string | null) ?? null,
       panelToken: (r.panel_token as string | null) ?? null,
       panelUrl: (r.panel_url as string | null) ?? null,
       panelLink: (r.panel_link as string | null) ?? null,
@@ -640,13 +659,20 @@ class PgStore implements Store {
     await this.q(`UPDATE subscriptions SET ${col} = now() WHERE token = $1`, [token]);
   }
 
-  async createEmailCode(email: string, ttlMinutes: number) {
+  async createEmailCode(
+    email: string,
+    ttlMinutes: number,
+    pending?: { passwordHash?: string | null; kind?: string },
+  ) {
     const code = newCode();
     await this.q(
-      `INSERT INTO email_codes (email, code, expires_at)
-       VALUES ($1, $2, now() + ($3 || ' minutes')::interval)
-       ON CONFLICT (email) DO UPDATE SET code = EXCLUDED.code, expires_at = EXCLUDED.expires_at`,
-      [email, code, ttlMinutes],
+      `INSERT INTO email_codes (email, code, expires_at, password_hash, kind)
+       VALUES ($1, $2, now() + ($3 || ' minutes')::interval, $4, $5)
+       ON CONFLICT (email) DO UPDATE SET code = EXCLUDED.code,
+         expires_at = EXCLUDED.expires_at,
+         password_hash = EXCLUDED.password_hash,
+         kind = EXCLUDED.kind`,
+      [email, code, ttlMinutes, pending?.passwordHash ?? null, pending?.kind ?? "signup"],
     );
     await this.q("DELETE FROM email_codes WHERE expires_at < now()");
     return code;
@@ -655,11 +681,22 @@ class PgStore implements Store {
   async consumeEmailCode(email: string, code: string) {
     // Гасим код при любой попытке — перебор шести цифр не даём.
     const { rows } = await this.q(
-      "DELETE FROM email_codes WHERE email = $1 RETURNING code, expires_at",
+      "DELETE FROM email_codes WHERE email = $1 RETURNING code, expires_at, password_hash, kind",
       [email],
     );
     const rec = rows[0];
-    return Boolean(rec && rec.code === code && new Date(rec.expires_at as string) > new Date());
+    if (!rec || rec.code !== code || new Date(rec.expires_at as string) <= new Date()) return null;
+    return {
+      passwordHash: (rec.password_hash as string | null) ?? null,
+      kind: (rec.kind as string) ?? "signup",
+    };
+  }
+
+  async setPassword(token: string, passwordHash: string) {
+    await this.q("UPDATE subscriptions SET password_hash = $2 WHERE token = $1", [
+      token,
+      passwordHash,
+    ]);
   }
 
   private async hydrateTicket(r: PgRow): Promise<Ticket> {
@@ -727,7 +764,10 @@ class PgStore implements Store {
 
 class MemoryStore implements Store {
   private subs: SubRecord[] = [];
-  private codes = new Map<string, { code: string; expiresAt: Date }>();
+  private codes = new Map<
+    string,
+    { code: string; expiresAt: Date; passwordHash: string | null; kind: string }
+  >();
   private nonces = new Map<string, Date>();
   private payments: PaymentRecord[] = [];
   private consents: ConsentRecord[] = [];
@@ -764,6 +804,7 @@ class MemoryStore implements Store {
   async createSub(rec: NewSub) {
     const full: SubRecord = {
       ...rec,
+      passwordHash: rec.passwordHash ?? null,
       trialUsed: rec.isTrial,
       panelToken: rec.panelToken ?? null,
       panelUrl: null,
@@ -877,15 +918,29 @@ class MemoryStore implements Store {
     if (kind === "expiring") sub.notifiedExpiring = new Date();
     else sub.notifiedExpired = new Date();
   }
-  async createEmailCode(email: string, ttlMinutes: number) {
+  async createEmailCode(
+    email: string,
+    ttlMinutes: number,
+    pending?: { passwordHash?: string | null; kind?: string },
+  ) {
     const code = newCode();
-    this.codes.set(email, { code, expiresAt: new Date(Date.now() + ttlMinutes * 60_000) });
+    this.codes.set(email, {
+      code,
+      expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+      passwordHash: pending?.passwordHash ?? null,
+      kind: pending?.kind ?? "signup",
+    });
     return code;
   }
   async consumeEmailCode(email: string, code: string) {
     const rec = this.codes.get(email);
     this.codes.delete(email);
-    return Boolean(rec && rec.code === code && rec.expiresAt > new Date());
+    if (!rec || rec.code !== code || rec.expiresAt <= new Date()) return null;
+    return { passwordHash: rec.passwordHash, kind: rec.kind };
+  }
+  async setPassword(token: string, passwordHash: string) {
+    const sub = this.subs.find((s) => s.token === token);
+    if (sub) sub.passwordHash = passwordHash;
   }
   async createTicket(email: string, body: string) {
     const ticket: Ticket = {

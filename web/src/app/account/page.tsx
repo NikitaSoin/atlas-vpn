@@ -81,11 +81,11 @@ function ChooseAccess({ email, trialUsed, err }: { email: string; trialUsed: boo
 export default async function AccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; err?: string; paid?: string }>;
+  searchParams: Promise<{ new?: string; err?: string; paid?: string; pass?: string }>;
 }) {
   const sub = await currentSub();
   if (!sub) redirect("/start");
-  const { new: isNew, err, paid } = await searchParams;
+  const { new: isNew, err, paid, pass } = await searchParams;
   // Банк возвращает человека на главную без номера заказа — смотрим сами,
   // чем закончился его последний платёж.
   const lastPay = await getStore().lastPayment(sub.email);
@@ -217,6 +217,10 @@ export default async function AccountPage({
             <dt className="text-muted">Уведомления в Telegram</dt>
             <dd>{sub.telegramChatId ? "подключены" : "не подключены"}</dd>
           </div>
+          <div>
+            <dt className="text-muted">Вход</dt>
+            <dd>{sub.passwordHash ? "по почте и паролю" : "по коду из письма"}</dd>
+          </div>
         </dl>
       </section>
 
@@ -230,6 +234,58 @@ export default async function AccountPage({
             Telegram
           </a>
         </div>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
+        <h2 className="font-medium">Пароль</h2>
+        <p className="mt-1.5 text-sm text-muted">
+          {sub.passwordHash
+            ? "Меняйте, если считаете, что его кто-то узнал."
+            : "У аккаунта ещё нет пароля — задайте, чтобы входить без кода из письма."}
+        </p>
+        {pass && <p className="mt-2 text-sm text-good">Пароль изменён.</p>}
+        {err === "oldpass" && <p className="mt-2 text-sm text-bad">Текущий пароль не подошёл.</p>}
+        {err === "newpass" && (
+          <p className="mt-2 text-sm text-bad">
+            Новый пароль слишком короткий или слишком простой.
+          </p>
+        )}
+        {err === "match" && <p className="mt-2 text-sm text-bad">Пароли не совпали.</p>}
+        <form action="/api/account" method="POST" className="mt-4 grid gap-2 sm:grid-cols-3">
+          <input type="hidden" name="action" value="change_password" />
+          {sub.passwordHash && (
+            <input
+              type="password"
+              name="current"
+              required
+              autoComplete="current-password"
+              placeholder="Текущий пароль"
+              className="rounded-xl border border-line bg-ink px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-accent"
+            />
+          )}
+          <input
+            type="password"
+            name="next"
+            required
+            autoComplete="new-password"
+            placeholder="Новый пароль"
+            className="rounded-xl border border-line bg-ink px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-accent"
+          />
+          <input
+            type="password"
+            name="next2"
+            required
+            autoComplete="new-password"
+            placeholder="Ещё раз"
+            className="rounded-xl border border-line bg-ink px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-accent"
+          />
+          <button
+            type="submit"
+            className="rounded-xl border border-line px-4 py-2.5 text-sm transition hover:border-accent sm:col-span-3 sm:justify-self-start"
+          >
+            Сохранить пароль
+          </button>
+        </form>
       </section>
 
       <section className="mt-6 rounded-2xl border border-line/60 bg-ink p-5">

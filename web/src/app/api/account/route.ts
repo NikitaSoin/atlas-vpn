@@ -4,6 +4,7 @@ import { getStore } from "@/lib/db";
 import { getPanel } from "@/lib/panel";
 import { clearSession, SESSION_COOKIE } from "@/lib/session";
 import { track } from "@/lib/analytics";
+import { hashPassword, passwordProblem, verifyPassword } from "@/lib/password";
 
 /** Действия кабинета: выход, отвязка Telegram. Вход — через /api/signup. */
 export async function POST(req: NextRequest) {
@@ -14,6 +15,30 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.redirect(absoluteUrl(req, "/"), { status: 303 });
     clearSession(res);
     return res;
+  }
+
+  if (action === "change_password") {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    const store = getStore();
+    const sub = token ? await store.findSubByToken(token) : null;
+    if (!sub) return NextResponse.redirect(absoluteUrl(req, "/start"), { status: 303 });
+
+    const current = String(form.get("current") ?? "");
+    const next = String(form.get("next") ?? "");
+    // Старый пароль спрашиваем всегда, когда он задан: иначе чужой человек,
+    // добравшийся до открытой вкладки, сменил бы пароль и забрал аккаунт.
+    if (sub.passwordHash && !(await verifyPassword(current, sub.passwordHash))) {
+      return NextResponse.redirect(absoluteUrl(req, "/account?err=oldpass"), { status: 303 });
+    }
+    if (passwordProblem(next)) {
+      return NextResponse.redirect(absoluteUrl(req, "/account?err=newpass"), { status: 303 });
+    }
+    if (next !== String(form.get("next2") ?? "")) {
+      return NextResponse.redirect(absoluteUrl(req, "/account?err=match"), { status: 303 });
+    }
+    await store.setPassword(sub.token, await hashPassword(next));
+    await track(req.headers, "password_changed");
+    return NextResponse.redirect(absoluteUrl(req, "/account?pass=1"), { status: 303 });
   }
 
   if (action === "delete_account") {

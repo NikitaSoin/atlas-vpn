@@ -5,14 +5,17 @@ import { redirect } from "next/navigation";
 export default async function VerifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ email?: string; err?: string }>;
+  searchParams: Promise<{ email?: string; err?: string; mode?: string }>;
 }) {
-  const { email, err } = await searchParams;
+  const { email, err, mode } = await searchParams;
   if (!email) redirect("/start");
 
   return (
     <main className="mx-auto max-w-md px-5 py-16">
-      <Link href={`/start?email=${encodeURIComponent(email)}`} className="text-sm text-muted hover:text-fg">
+      <Link
+        href={`/start?mode=${mode ?? "signup"}&email=${encodeURIComponent(email)}`}
+        className="text-sm text-muted hover:text-fg"
+      >
         ← Другой email
       </Link>
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">Код из письма</h1>
@@ -27,6 +30,7 @@ export default async function VerifyPage({
         className="mt-6 space-y-4 rounded-2xl border border-line bg-surface p-6"
       >
         <input type="hidden" name="email" value={email} />
+        <input type="hidden" name="mode" value={mode ?? "signup"} />
         {err === "code" && (
           <p className="text-sm text-bad">Код не подошёл или устарел. Запросите новый.</p>
         )}
@@ -59,13 +63,15 @@ export default async function VerifyPage({
         </button>
       </form>
 
-      <form action="/api/signup" method="POST" className="mt-4 text-center text-sm text-muted">
-        <input type="hidden" name="email" value={email} />
-        Не пришло?{" "}
-        <button type="submit" className="text-accent-ink hover:underline">
-          Отправить ещё раз
-        </button>
-      </form>
+      <p className="mt-4 text-center text-sm text-muted">
+        Не пришло письмо?{" "}
+        <Link
+          href={`/start?mode=${mode ?? "signup"}&email=${encodeURIComponent(email)}`}
+          className="text-accent-ink hover:underline"
+        >
+          Запросить код заново
+        </Link>
+      </p>
     </main>
   );
 }

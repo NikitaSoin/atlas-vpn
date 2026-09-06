@@ -5,30 +5,45 @@ import { setSession } from "@/lib/session";
 import { createAccount } from "@/lib/subscription";
 import { track } from "@/lib/analytics";
 
-/** Проверка кода: верный → аккаунт (новый — с пробным доступом) и кабинет. */
+/**
+ * Проверка кода из письма.
+ *
+ * Для регистрации: создаём аккаунт с паролем, который был задан на первом шаге.
+ * Для восстановления: заменяем пароль существующего аккаунта.
+ * В обоих случаях сразу открываем сессию — человек уже подтвердил владение
+ * почтой, просить его входить заново незачем.
+ */
 export async function POST(req: NextRequest) {
   const form = await req.formData();
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const code = String(form.get("code") ?? "").replace(/\D/g, "");
-  const back = `/start/verify?email=${encodeURIComponent(email)}`;
+  const mode = String(form.get("mode") ?? "signup");
+  const back = `/start/verify?email=${encodeURIComponent(email)}&mode=${mode}`;
 
   if (!email.includes("@") || code.length !== 6) {
     return NextResponse.redirect(absoluteUrl(req, `${back}&err=code`), { status: 303 });
   }
   const store = getStore();
-  if (!(await store.consumeEmailCode(email, code))) {
+  const pending = await store.consumeEmailCode(email, code);
+  if (!pending) {
     await track(req.headers, "code_wrong");
     return NextResponse.redirect(absoluteUrl(req, `${back}&err=code`), { status: 303 });
   }
 
   let sub = await store.findSubByEmail(email);
   let isNew = false;
+
   if (!sub) {
-    sub = await createAccount(email);
+    if (pending.kind === "reset") {
+      // Восстанавливать нечего: аккаунт не найден. Ведём на регистрацию.
+      return NextResponse.redirect(absoluteUrl(req, "/start?mode=signup"), { status: 303 });
+    }
+    sub = await createAccount(email, pending.passwordHash);
     isNew = true;
     await track(req.headers, "account_created");
-  } else {
-    await track(req.headers, "login");
+  } else if (pending.passwordHash) {
+    await store.setPassword(sub.token, pending.passwordHash);
+    await track(req.headers, "password_reset");
   }
 
   const res = NextResponse.redirect(absoluteUrl(req, isNew ? "/account?new=1" : "/account"), {
