@@ -7,9 +7,11 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (process.env.REMINDERS_DISABLED === "1") return;
   const { runReminders } = await import("./lib/notify");
-  const { provisionPending } = await import("./lib/subscription");
+  const { provisionPending, reconcilePanel } = await import("./lib/subscription");
   const tick = async () => {
     try {
+      const r = await reconcilePanel();
+      if (r) console.log(`[panel] выровнено сроков: ${r}`);
       const n = await runReminders();
       if (n) console.log(`[reminders] отправлено: ${n}`);
     } catch (e) {

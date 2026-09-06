@@ -47,7 +47,8 @@ export type UpdateInput = {
 
 export interface Panel {
   createSubscription(input: CreateInput): Promise<Subscription>;
-  getSubscription(token: string): Promise<Subscription | null>;
+  /** `withLink` — тянуть ли vless-линк отдельным запросом (нужен только при выдаче). */
+  getSubscription(token: string, withLink?: boolean): Promise<Subscription | null>;
   /** Удалить доступ в панели. Вызывается при удалении аккаунта на сайте. */
   deleteSubscription(token: string): Promise<boolean>;
   /**

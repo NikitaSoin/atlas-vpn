@@ -81,6 +81,40 @@ export async function provisionPanel(sub: SubRecord): Promise<SubRecord> {
   }
 }
 
+/**
+ * Сверка сроков с панелью. Сайт — источник правды: если оплата прошла, а
+ * панель в тот момент не ответила, срок в базе новый, а в панели старый.
+ * Раньше такая ошибка только писалась в журнал и больше никем не
+ * подхватывалась (гипотеза 5 из разбора 06.09.2026). Теперь планировщик
+ * раз в 10 минут дожимает панель до состояния базы.
+ * Возвращает число исправленных записей.
+ */
+export async function reconcilePanel(): Promise<number> {
+  const store = getStore();
+  const panel = getPanel();
+  let fixed = 0;
+  for (const sub of await store.listProvisioned(200)) {
+    if (!sub.panelToken) continue;
+    const wanted = panelExpiry(sub.expiresAt, sub.isTrial);
+    try {
+      const current = await panel.getSubscription(sub.panelToken, false);
+      if (!current) continue;
+      // Минутная погрешность — не повод дёргать панель.
+      if (Math.abs(current.expiresAt.getTime() - wanted.getTime()) < 60_000) continue;
+      await panel.updateSubscription(
+        sub.panelToken,
+        { expiresAt: wanted, trafficLimitBytes: sub.isTrial ? undefined : 0 },
+        sub.panelUserId,
+      );
+      console.log(`[panel] срок выровнен: ${sub.email} → ${wanted.toISOString().slice(0, 10)}`);
+      fixed++;
+    } catch (e) {
+      console.error("[panel] сверка не удалась:", sub.email, (e as Error).message);
+    }
+  }
+  return fixed;
+}
+
 /** Проход планировщика: доделать доступы, которые не удалось завести сразу. */
 export async function provisionPending(): Promise<number> {
   const pending = await getStore().listUnprovisioned(50);

@@ -156,6 +156,8 @@ export interface Store {
   deleteAccount(token: string): Promise<SubRecord | null>;
   /** Удалить статистику старше указанного числа дней. Возвращает число строк. */
   purgeOldEvents(days: number): Promise<number>;
+  /** Аккаунты с выданным доступом — для сверки сроков с панелью. */
+  listProvisioned(limit: number): Promise<SubRecord[]>;
   /** Аккаунты, для которых доступ в панели ещё не заведён. */
   listUnprovisioned(limit: number): Promise<SubRecord[]>;
   /** Последние подписки — для админки. */
@@ -597,6 +599,14 @@ class PgStore implements Store {
     return rows.length;
   }
 
+  async listProvisioned(limit: number) {
+    const { rows } = await this.q(
+      "SELECT * FROM subscriptions WHERE panel_token IS NOT NULL AND plan_id <> 'none' ORDER BY expires_at DESC LIMIT $1",
+      [limit],
+    );
+    return rows.map((r) => this.rowToSub(r));
+  }
+
   async listUnprovisioned(limit: number) {
     const { rows } = await this.q(
       "SELECT * FROM subscriptions WHERE panel_token IS NULL AND plan_id <> 'none' ORDER BY created_at LIMIT $1",
@@ -904,6 +914,9 @@ class MemoryStore implements Store {
     const before = this.events.length;
     this.events = this.events.filter((e) => e.createdAt.getTime() >= edge);
     return before - this.events.length;
+  }
+  async listProvisioned(limit: number) {
+    return this.subs.filter((s) => s.panelToken && s.planId !== "none").slice(0, limit);
   }
   async listUnprovisioned(limit: number) {
     return this.subs.filter((s) => !s.panelToken && s.planId !== "none").slice(0, limit);
