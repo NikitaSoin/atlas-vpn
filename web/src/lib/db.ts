@@ -27,6 +27,10 @@ export type SubRecord = {
    * повторяет попытку. Аккаунт на сайте существует независимо от панели.
    */
   panelToken: string | null;
+  /** Подписочная ссылка из панели — для кнопки «добавить одним тапом». */
+  panelUrl: string | null;
+  /** Прямой vless:// линк — для копирования и QR. */
+  panelLink: string | null;
   /** chat_id пользователя в Telegram-боте, если привязал уведомления. */
   telegramChatId: string | null;
   /** Когда отправили «заканчивается через сутки» / «закончилась». */
@@ -74,7 +78,11 @@ export interface Store {
   /** Изменить срок/тариф/флаги. Токен и ссылка не меняются. */
   updateSub(token: string, patch: SubPatch): Promise<SubRecord | null>;
   setTelegram(token: string, chatId: string | null): Promise<void>;
-  setPanelToken(token: string, panelToken: string): Promise<void>;
+  /** Сохранить выданный доступ целиком, чтобы страницы не ходили в панель. */
+  setPanelAccess(
+    token: string,
+    access: { panelToken: string; panelUrl: string | null; panelLink: string | null },
+  ): Promise<void>;
   /** Аккаунты, для которых доступ в панели ещё не заведён. */
   listUnprovisioned(limit: number): Promise<SubRecord[]>;
   /** Последние подписки — для админки. */
@@ -136,6 +144,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS is_trial BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_token TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_used BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_url TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_link TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expiring TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS notified_expired TIMESTAMPTZ;
@@ -277,6 +287,8 @@ class PgStore implements Store {
       isTrial: Boolean(r.is_trial),
       trialUsed: Boolean(r.trial_used),
       panelToken: (r.panel_token as string | null) ?? null,
+      panelUrl: (r.panel_url as string | null) ?? null,
+      panelLink: (r.panel_link as string | null) ?? null,
       telegramChatId: (r.telegram_chat_id as string | null) ?? null,
       notifiedExpiring: r.notified_expiring ? new Date(r.notified_expiring as string) : null,
       notifiedExpired: r.notified_expired ? new Date(r.notified_expired as string) : null,
@@ -327,8 +339,14 @@ class PgStore implements Store {
     return this.rowToSub(rows[0]);
   }
 
-  async setPanelToken(token: string, panelToken: string) {
-    await this.q("UPDATE subscriptions SET panel_token = $2 WHERE token = $1", [token, panelToken]);
+  async setPanelAccess(
+    token: string,
+    access: { panelToken: string; panelUrl: string | null; panelLink: string | null },
+  ) {
+    await this.q(
+      "UPDATE subscriptions SET panel_token = $2, panel_url = $3, panel_link = $4 WHERE token = $1",
+      [token, access.panelToken, access.panelUrl, access.panelLink],
+    );
   }
 
   async listUnprovisioned(limit: number) {
@@ -522,6 +540,8 @@ class MemoryStore implements Store {
       ...rec,
       trialUsed: rec.isTrial,
       panelToken: rec.panelToken ?? null,
+      panelUrl: null,
+      panelLink: null,
       createdAt: new Date(),
       telegramChatId: null,
       notifiedExpiring: null,
@@ -541,9 +561,12 @@ class MemoryStore implements Store {
     if (sub.isTrial) sub.trialUsed = true;
     return sub;
   }
-  async setPanelToken(token: string, panelToken: string) {
+  async setPanelAccess(
+    token: string,
+    access: { panelToken: string; panelUrl: string | null; panelLink: string | null },
+  ) {
     const sub = this.subs.find((s) => s.token === token);
-    if (sub) sub.panelToken = panelToken;
+    if (sub) Object.assign(sub, access);
   }
   async listUnprovisioned(limit: number) {
     return this.subs.filter((s) => !s.panelToken && s.planId !== "none").slice(0, limit);

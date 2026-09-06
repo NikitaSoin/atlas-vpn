@@ -67,8 +67,13 @@ export async function provisionPanel(sub: SubRecord): Promise<SubRecord> {
       expiresAt: panelExpiry(sub.expiresAt, sub.isTrial),
       trafficLimitBytes: sub.isTrial ? Math.round(TRIAL_TRAFFIC_GB * 1024 ** 3) : 0,
     });
-    await getStore().setPanelToken(sub.token, panelSub.token);
-    return { ...sub, panelToken: panelSub.token };
+    const access = {
+      panelToken: panelSub.token,
+      panelUrl: panelSub.url ?? null,
+      panelLink: panelSub.rawLink ?? null,
+    };
+    await getStore().setPanelAccess(sub.token, access);
+    return { ...sub, ...access };
   } catch (e) {
     console.error("[panel] provision failed for", sub.email, (e as Error).message);
     return sub;

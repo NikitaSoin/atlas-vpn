@@ -78,30 +78,59 @@ async function createInPanel({ email, expiresAt, isTrial }) {
     }),
   });
   if (!res.ok) throw new Error(`панель ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return (await res.json()).response.shortUuid;
+  const u = (await res.json()).response;
+  return { shortUuid: u.shortUuid, url: u.subscriptionUrl ?? null };
+}
+
+/** Прямой vless:// линк — его копируют и кодируют в QR. */
+async function fetchRawLink(shortUuid) {
+  try {
+    const res = await fetch(`${PANEL_URL}/api/sub/${shortUuid}`, {
+      headers: {
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-For": "127.0.0.1",
+        "User-Agent": "v2rayNG/1.9.5",
+      },
+    });
+    if (!res.ok) return null;
+    const decoded = Buffer.from(await res.text(), "base64").toString("utf8");
+    return decoded.split("\n").find((l) => l.startsWith("vless://")) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 const pool = new pg.Pool(pgConfig(DATABASE_URL));
 try {
+  // Берём и тех, кому доступ ещё не выдан, и тех, у кого не сохранена ссылка.
   const { rows } = await pool.query(
-    `SELECT token, email, is_trial, expires_at FROM subscriptions
-     WHERE panel_token IS NULL AND plan_id <> 'none' ORDER BY created_at`,
+    `SELECT token, email, is_trial, expires_at, panel_token FROM subscriptions
+     WHERE plan_id <> 'none' AND (panel_token IS NULL OR panel_link IS NULL)
+     ORDER BY created_at`,
   );
   if (rows.length === 0) {
     console.log("Все аккаунты уже с доступом — делать нечего.");
   }
   for (const r of rows) {
     try {
-      const shortUuid = await createInPanel({
-        email: r.email,
-        expiresAt: new Date(r.expires_at),
-        isTrial: r.is_trial,
-      });
-      await pool.query("UPDATE subscriptions SET panel_token = $2 WHERE token = $1", [
-        r.token,
-        shortUuid,
-      ]);
-      console.log(`✓ ${r.email} → ${shortUuid}`);
+      let shortUuid = r.panel_token;
+      let url = null;
+      if (!shortUuid) {
+        ({ shortUuid, url } = await createInPanel({
+          email: r.email,
+          expiresAt: new Date(r.expires_at),
+          isTrial: r.is_trial,
+        }));
+      } else {
+        url = `${PANEL_URL}/api/sub/${shortUuid}`;
+      }
+      const link = await fetchRawLink(shortUuid);
+      await pool.query(
+        `UPDATE subscriptions SET panel_token = $2, panel_url = $3, panel_link = COALESCE($4, panel_link)
+         WHERE token = $1`,
+        [r.token, shortUuid, url, link],
+      );
+      console.log(`✓ ${r.email} → ${shortUuid}${link ? " (ссылка сохранена)" : " (без ссылки)"}`);
     } catch (e) {
       console.log(`✗ ${r.email}: ${e.message}`);
     }

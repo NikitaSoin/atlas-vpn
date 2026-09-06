@@ -31,10 +31,10 @@ export default async function RootLayout({
   const cabinetLabel =
     sub && state && left
       ? state === "trial" || state === "active"
-        ? `Кабинет · ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`}`
+        ? `Личный кабинет · ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`}`
         : state === "none"
-          ? "Кабинет"
-          : "Кабинет · истекла"
+          ? "Личный кабинет"
+          : "Личный кабинет · истекла"
       : "Войти";
 
   return (

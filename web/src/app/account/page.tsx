@@ -19,7 +19,7 @@ function ChooseAccess({ email, trialUsed, err }: { email: string; trialUsed: boo
     <main className="mx-auto max-w-2xl px-5 py-16">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Аккаунт создан</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Личный кабинет</h1>
           <p className="mt-1 text-muted">{email}</p>
         </div>
         <form action="/api/account" method="POST">
@@ -104,7 +104,7 @@ export default async function AccountPage({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {isNew ? "Доступ включён" : "Кабинет"}
+            {isNew ? "Доступ включён" : "Личный кабинет"}
           </h1>
           <p className="mt-1 text-muted">{sub.email}</p>
         </div>
@@ -174,6 +174,36 @@ export default async function AccountPage({
             )}
           </div>
         )}
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
+        <h2 className="font-medium">Данные аккаунта</h2>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-muted">Email</dt>
+            <dd>{sub.email}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Тариф</dt>
+            <dd>{sub.isTrial ? `Пробный период, ${TRIAL_DAYS} дня` : (plans.find((p) => p.id === sub.planId)?.title ?? "—")}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Действует до</dt>
+            <dd>{formatDate(sub.expiresAt)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Автопродление</dt>
+            <dd>{sub.autoRenew ? "включено" : "выключено"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Устройства</dt>
+            <dd>без ограничений, одна ссылка на все ваши</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Уведомления в Telegram</dt>
+            <dd>{sub.telegramChatId ? "подключены" : "не подключены"}</dd>
+          </div>
+        </dl>
       </section>
 
       <section className="mt-6 rounded-2xl border border-line bg-surface p-5">

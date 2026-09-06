@@ -10,14 +10,23 @@ export async function register() {
   const { provisionPending } = await import("./lib/subscription");
   const tick = async () => {
     try {
-      const p = await provisionPending();
-      if (p) console.log(`[panel] доведено доступов: ${p}`);
       const n = await runReminders();
       if (n) console.log(`[reminders] отправлено: ${n}`);
     } catch (e) {
       console.error("[reminders]", (e as Error).message);
     }
   };
+  // Выдача доступов — часто и дёшево (запрос в базу), напоминания — раз в 10 минут.
+  const provisionTick = async () => {
+    try {
+      const p = await provisionPending();
+      if (p) console.log(`[panel] доведено доступов: ${p}`);
+    } catch (e) {
+      console.error("[panel]", (e as Error).message);
+    }
+  };
+  setTimeout(provisionTick, 5_000);
+  setInterval(provisionTick, 60_000);
   setTimeout(tick, 30_000);
   setInterval(tick, 10 * 60_000);
 }

@@ -126,7 +126,7 @@ class RemnawavePanel implements Panel {
       headers: { ...this.headers(), ...init?.headers },
       cache: "no-store",
       // Панель за границей: если сеть режет, не держим страницу минутами.
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -147,7 +147,7 @@ class RemnawavePanel implements Panel {
             "User-Agent": "v2rayNG/1.9.5",
           },
           cache: "no-store",
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(5000),
         },
       );
       if (!res.ok) return undefined;
