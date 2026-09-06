@@ -30,13 +30,16 @@ const stepNum =
  * меньшинству, но должен быть под рукой, если кнопка импорта не сработала.
  */
 export default function SetupClient({
-  subscriptionUrl,
   importLink,
   qrSvg,
 }: {
-  /** null — доступ в панели ещё готовится: показываем шаг установки, импорт — позже. */
-  subscriptionUrl: string | null;
-  /** Что копируем и кодируем в QR: vless:// пока нет домена, потом — подписка. */
+  /**
+   * Единственный адрес подписки, который отдаём приложению — наш `/sub/{token}`.
+   * Адрес самой панели сюда попадать НЕ должен: он ведёт на ретранслятор
+   * Cloudflare, у российских провайдеров не скачивается, и приложение получает
+   * подписку без единого сервера (проверено 07.09.2026).
+   * null — доступ ещё готовится: показываем шаг установки, импорт появится сам.
+   */
   importLink: string | null;
   qrSvg: string | null;
 }) {
@@ -133,10 +136,15 @@ export default function SetupClient({
                 Настройки перенесутся автоматически. Затем включите VPN внутри{" "}
                 {client.name}.
               </p>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
+                В списке появятся два сервера — <b className="font-medium text-fg">NL-1</b> и{" "}
+                <b className="font-medium text-fg">NL-2</b>. Это один и тот же доступ по
+                разным каналам. Начните с NL-1; если интернет не идёт, выберите NL-2.
+              </p>
               <div className="mt-4">
-                {client.deepLink && subscriptionUrl ? (
+                {client.deepLink && importLink ? (
                   <a
-                    href={client.deepLink(subscriptionUrl)}
+                    href={client.deepLink(importLink)}
                     onClick={() => trackClient("config_import_click", platform)}
                     className="inline-block rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition hover:brightness-110"
                   >

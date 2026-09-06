@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPanel } from "@/lib/panel";
 import { siteUrl } from "@/lib/site";
 import { brand } from "@/lib/brand";
+import { incyRoutingHeader } from "@/lib/incy";
 
 /**
  * Подписка на нашем домене.
@@ -64,6 +65,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
     headers.set("profile-web-page-url", `${siteUrl()}/account`);
     headers.set("support-url", brand.supportTelegram);
     headers.set("profile-title", `base64:${Buffer.from(brand.name, "utf8").toString("base64")}`);
+    // Маршрутизацию и DNS задаём мы, а не настройки на устройстве: иначе
+    // включённый VPN у части людей выглядит как «интернет пропал».
+    headers.set("routing", incyRoutingHeader());
     headers.set("cache-control", "no-store");
     return new NextResponse(body, { status: 200, headers });
   } catch (e) {

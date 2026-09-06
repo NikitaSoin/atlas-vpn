@@ -29,7 +29,7 @@ export default async function SetupSection({ sub }: { sub: SubRecord }) {
   return (
     <>
       {!importLink && <meta httpEquiv="refresh" content="20" />}
-      <SetupClient subscriptionUrl={sub.panelUrl} importLink={importLink} qrSvg={qrSvg} />
+      <SetupClient importLink={importLink} qrSvg={qrSvg} />
     </>
   );
 }
