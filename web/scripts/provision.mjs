@@ -1,0 +1,111 @@
+/**
+ * Временный мост: выдать доступ в VPN-панели аккаунтам, которым сайт не смог
+ * его выдать сам.
+ *
+ * Зачем: IP сервера панели заблокирован в сети хостинга сайта, и сайт до
+ * панели не дозванивается. С ноутбука панель доступна, поэтому эту работу
+ * можно сделать отсюда. Как только у панели будет доступный IP (или домен
+ * за Cloudflare), скрипт станет не нужен — сайт делает то же самое сам
+ * (`provisionPending` в web/src/lib/subscription.ts).
+ *
+ * Запуск из папки web:
+ *   node scripts/provision.mjs
+ *
+ * Ключи берутся из ../СТАРТ_С_КЛЮЧАМИ.md (файл в репозиторий не уезжает).
+ */
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
+import pg from "pg";
+
+const KEYS = new URL("../../СТАРТ_С_КЛЮЧАМИ.md", import.meta.url);
+const keys = readFileSync(KEYS, "utf8");
+const val = (name) =>
+  (keys.match(new RegExp(`^${name}=(.*)$`, "m"))?.[1] ?? "").trim();
+
+const PANEL_URL = (process.env.PANEL_URL ?? val("PANEL_URL")).replace(/\/$/, "");
+const PANEL_TOKEN = process.env.PANEL_TOKEN ?? val("PANEL_TOKEN");
+const SQUAD = process.env.PANEL_SQUAD_UUID ?? val("PANEL_SQUAD_UUID");
+const DATABASE_URL = process.env.DATABASE_URL ?? val("DATABASE_URL");
+const CA = readFileSync(`${homedir()}/.cloud-certs/root.crt`, "utf8");
+const GRACE_HOURS = 24;
+const TRIAL_TRAFFIC_GB = Number(process.env.TRIAL_TRAFFIC_GB ?? 10);
+
+function pgConfig(url) {
+  const m = url.match(
+    /^postgres(?:ql)?:\/\/([^:/@]+):(.*)@([^@/:]+)(?::(\d+))?\/([^?]+)(?:\?(.*))?$/,
+  );
+  if (!m) throw new Error("не разобрать DATABASE_URL");
+  const dec = (v) => {
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      return v;
+    }
+  };
+  return {
+    user: dec(m[1]),
+    password: dec(m[2]),
+    host: m[3],
+    port: m[4] ? Number(m[4]) : 5432,
+    database: dec(m[5]),
+    ssl: { ca: CA, rejectUnauthorized: true },
+    connectionTimeoutMillis: 30000,
+  };
+}
+
+async function createInPanel({ email, expiresAt, isTrial }) {
+  const expireAt = isTrial
+    ? expiresAt
+    : new Date(expiresAt.getTime() + GRACE_HOURS * 3600_000);
+  const username = `${email.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 24)}_${randomUUID().slice(0, 6)}`;
+  const res = await fetch(`${PANEL_URL}/api/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${PANEL_TOKEN}`,
+      "X-Forwarded-Proto": "https",
+      "X-Forwarded-For": "127.0.0.1",
+    },
+    body: JSON.stringify({
+      username,
+      status: "ACTIVE",
+      expireAt: expireAt.toISOString(),
+      trafficLimitBytes: isTrial ? Math.round(TRIAL_TRAFFIC_GB * 1024 ** 3) : 0,
+      trafficLimitStrategy: "NO_RESET",
+      activeInternalSquads: [SQUAD],
+      email,
+    }),
+  });
+  if (!res.ok) throw new Error(`панель ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return (await res.json()).response.shortUuid;
+}
+
+const pool = new pg.Pool(pgConfig(DATABASE_URL));
+try {
+  const { rows } = await pool.query(
+    `SELECT token, email, is_trial, expires_at FROM subscriptions
+     WHERE panel_token IS NULL AND plan_id <> 'none' ORDER BY created_at`,
+  );
+  if (rows.length === 0) {
+    console.log("Все аккаунты уже с доступом — делать нечего.");
+  }
+  for (const r of rows) {
+    try {
+      const shortUuid = await createInPanel({
+        email: r.email,
+        expiresAt: new Date(r.expires_at),
+        isTrial: r.is_trial,
+      });
+      await pool.query("UPDATE subscriptions SET panel_token = $2 WHERE token = $1", [
+        r.token,
+        shortUuid,
+      ]);
+      console.log(`✓ ${r.email} → ${shortUuid}`);
+    } catch (e) {
+      console.log(`✗ ${r.email}: ${e.message}`);
+    }
+  }
+} finally {
+  await pool.end();
+}
