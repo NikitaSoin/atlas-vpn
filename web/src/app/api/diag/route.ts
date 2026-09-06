@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sameCode } from "@/lib/admin";
 import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
 import { X509Certificate } from "node:crypto";
-import { usingMockPanel } from "@/lib/panel";
+import { panelProxyUrl, usingMockPanel } from "@/lib/panel";
 import { mailConfigured } from "@/lib/mail";
 import { telegramConfigured } from "@/lib/telegram";
 import { siteUrl } from "@/lib/site";
@@ -68,6 +68,24 @@ async function panelProbe() {
     });
     return { ok: res.ok, mode, url: base, status: res.status, ms: Date.now() - t0 };
   } catch (e) {
+    // Прямой адрес не ответил — проверяем, спасает ли ретранслятор.
+    const proxy = panelProxyUrl();
+    if (proxy) {
+      try {
+        const res = await fetch(`${proxy}/api/users?size=1&start=0`, {
+          headers: {
+            Authorization: `Bearer ${process.env.PANEL_TOKEN}`,
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-For": "127.0.0.1",
+          },
+          signal: AbortSignal.timeout(8000),
+          cache: "no-store",
+        });
+        return { ok: res.ok, mode, url: proxy, via: "ретранслятор", status: res.status, ms: Date.now() - t0 };
+      } catch (e2) {
+        return { ok: false, mode, url: base, proxy, error: (e2 as Error).message, ms: Date.now() - t0 };
+      }
+    }
     return { ok: false, mode, url: base, error: (e as Error).message, ms: Date.now() - t0 };
   }
 }

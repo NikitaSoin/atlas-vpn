@@ -51,6 +51,22 @@ export interface Panel {
   updateSubscription(token: string, input: UpdateInput): Promise<Subscription | null>;
 }
 
+/**
+ * Запасной путь к панели — ретранслятор на Cloudflare Workers.
+ *
+ * Сеть хостинга сайта и сеть сервера панели не видят друг друга: пакеты не
+ * доходят в обе стороны. Cloudflare доступен обеим, поэтому если прямой
+ * адрес не отвечает, запросы идут через него. Адрес не секрет, поэтому
+ * задан прямо здесь: сайт чинится сам, без правки переменных на хостинге.
+ * Переопределяется переменной PANEL_PROXY_URL, отключается значением "off".
+ */
+const PANEL_PROXY_DEFAULT = "https://irek-panel-proxy.nikitasoin.workers.dev";
+
+export function panelProxyUrl(): string | null {
+  const v = (process.env.PANEL_PROXY_URL ?? PANEL_PROXY_DEFAULT).trim();
+  return v && v !== "off" ? v.replace(/\/$/, "") : null;
+}
+
 const SUBSCRIPTION_HOST =
   process.env.SUBSCRIPTION_HOST ?? "https://sub.example.com";
 
@@ -104,11 +120,31 @@ type PanelUser = {
 };
 
 class RemnawavePanel implements Panel {
+  /**
+   * Адрес, по которому панель реально отвечает. Начинаем с прямого, при
+   * сетевой ошибке один раз пробуем ретранслятор и дальше держимся за то,
+   * что сработало. Ошибки самой панели (4xx/5xx) переключением не считаются.
+   */
+  private activeBase: string;
+
   constructor(
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly token: string,
     private readonly squadUuid: string,
-  ) {}
+  ) {
+    this.activeBase = baseUrl.replace(/\/$/, "");
+  }
+
+  /** Кандидаты по порядку: текущий рабочий, затем ретранслятор. */
+  private bases(): string[] {
+    const proxy = panelProxyUrl();
+    return proxy && proxy !== this.activeBase ? [this.activeBase, proxy] : [this.activeBase];
+  }
+
+  /** Публичный адрес для ссылок клиенту — тот, который отвечает. */
+  publicBase(): string {
+    return this.activeBase;
+  }
 
   private headers(): Record<string, string> {
     return {
@@ -121,51 +157,69 @@ class RemnawavePanel implements Panel {
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
-      ...init,
-      headers: { ...this.headers(), ...init?.headers },
-      cache: "no-store",
-      // Панель за границей: если сеть режет, не держим страницу минутами.
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Panel ${res.status} ${path}: ${body.slice(0, 200)}`);
+    let lastError: Error | null = null;
+    for (const base of this.bases()) {
+      let res: Response;
+      try {
+        res = await fetch(`${base}${path}`, {
+          ...init,
+          headers: { ...this.headers(), ...init?.headers },
+          cache: "no-store",
+          // Панель за границей: если сеть режет, не держим страницу минутами.
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch (e) {
+        // Сеть не пустила — пробуем следующий адрес.
+        lastError = e as Error;
+        continue;
+      }
+      if (base !== this.activeBase) {
+        console.log(`[panel] переключился на ${base}`);
+        this.activeBase = base;
+      }
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`Panel ${res.status} ${path}: ${body.slice(0, 200)}`);
+      }
+      return res.json() as Promise<T>;
     }
-    return res.json() as Promise<T>;
+    throw new Error(`Панель недоступна ни напрямую, ни через ретранслятор: ${lastError?.message}`);
   }
 
   /** Первый vless:// из подписки — для работы без домена. */
   private async fetchRawLink(shortUuid: string): Promise<string | undefined> {
-    try {
-      const res = await fetch(
-        `${this.baseUrl.replace(/\/$/, "")}/api/sub/${shortUuid}`,
-        {
+    for (const base of this.bases()) {
+      try {
+        const res = await fetch(
+          `${base}/api/sub/${shortUuid}`,
+          {
           headers: {
             "X-Forwarded-Proto": "https",
             "X-Forwarded-For": "127.0.0.1",
-            "User-Agent": "v2rayNG/1.9.5",
+              "User-Agent": "v2rayNG/1.9.5",
+            },
+            cache: "no-store",
+            signal: AbortSignal.timeout(5000),
           },
-          cache: "no-store",
-          signal: AbortSignal.timeout(5000),
-        },
-      );
-      if (!res.ok) return undefined;
-      const decoded = Buffer.from(await res.text(), "base64").toString("utf8");
-      return decoded.split("\n").find((l) => l.startsWith("vless://"));
-    } catch {
-      return undefined;
+        );
+        if (!res.ok) return undefined;
+        const decoded = Buffer.from(await res.text(), "base64").toString("utf8");
+        return decoded.split("\n").find((l) => l.startsWith("vless://"));
+      } catch {
+        // Следующий адрес.
+      }
     }
+    return undefined;
   }
 
   private async toSubscription(u: PanelUser): Promise<Subscription> {
     return {
       userId: String(u.id),
       token: u.shortUuid,
-      // Панель отдаёт ссылку на свой прямой адрес. Собираем её от baseUrl:
+      // Панель отдаёт ссылку на свой прямой адрес. Собираем её от рабочего:
       // если сайт ходит через ретранслятор, клиент получит тот же путь и
       // сможет обновлять подписку даже там, где прямой адрес недоступен.
-      url: `${this.baseUrl.replace(/\/$/, "")}/api/sub/${u.shortUuid}`,
+      url: `${this.activeBase}/api/sub/${u.shortUuid}`,
       rawLink: await this.fetchRawLink(u.shortUuid),
       expiresAt: new Date(u.expireAt),
     };
