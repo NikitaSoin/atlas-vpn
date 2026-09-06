@@ -25,7 +25,7 @@ const HINTS: Record<Mode, string> = {
 export default async function StartPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mode?: string; err?: string; email?: string }>;
+  searchParams: Promise<{ mode?: string; err?: string; email?: string; trial?: string }>;
 }) {
   if (await currentSub()) redirect("/account");
   const sp = await searchParams;
@@ -33,6 +33,9 @@ export default async function StartPage({
   // а вход — по явной ссылке из шапки.
   const mode: Mode =
     sp.mode === "login" ? "login" : sp.mode === "reset" ? "reset" : "signup";
+  // Бесплатный вариант выбирают до регистрации — выбор переносим через
+  // подтверждение почты, а не заставляем повторять его в кабинете.
+  const trial = mode === "signup" && sp.trial === "1";
 
   const errors: Record<string, string> = {
     email: "Похоже, почта с опечаткой — проверьте.",
@@ -54,7 +57,7 @@ export default async function StartPage({
         {(["login", "signup"] as const).map((m) => (
           <Link
             key={m}
-            href={`/start?mode=${m}`}
+            href={`/start?mode=${m}${m === "signup" && trial ? "&trial=1" : ""}`}
             className={`rounded-xl px-4 py-2 text-sm transition ${
               mode === m
                 ? "bg-accent-soft text-accent-ink"
@@ -66,8 +69,14 @@ export default async function StartPage({
         ))}
       </div>
 
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">{TITLES[mode]}</h1>
-      <p className="mt-2 text-muted">{HINTS[mode]}</p>
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">
+        {mode === "login" ? "С возвращением" : TITLES[mode]}
+      </h1>
+      <p className="mt-2 text-muted">
+        {trial
+          ? `Вы выбрали ${TRIAL_DAYS} дня бесплатно: ${TRIAL_TRAFFIC_GB} ГБ трафика, без карты.`
+          : HINTS[mode]}
+      </p>
 
       {sp.err && errors[sp.err] && (
         <p className="mt-4 rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">
@@ -84,7 +93,7 @@ export default async function StartPage({
         </p>
       )}
 
-      <AuthForm mode={mode} defaultEmail={sp.email ?? ""} />
+      <AuthForm mode={mode} defaultEmail={sp.email ?? ""} trial={trial} />
 
       <p className="mt-4 text-center text-sm text-muted">
         {mode === "login" ? (
@@ -104,7 +113,7 @@ export default async function StartPage({
         )}
       </p>
 
-      {mode === "signup" && (
+      {mode === "signup" && !trial && (
         <p className="mt-3 text-center text-sm text-muted">
           Новым аккаунтам доступен пробный период: {TRIAL_DAYS} дня и{" "}
           {TRIAL_TRAFFIC_GB} ГБ трафика бесплатно, без карты.

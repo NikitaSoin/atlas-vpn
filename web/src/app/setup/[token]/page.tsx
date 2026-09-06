@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { brand } from "@/lib/brand";
-import { plans } from "@/lib/plans";
 import { getStore } from "@/lib/db";
 import { telegramLinkUrl } from "@/lib/telegram";
-import { formatDate, subState, timeLeft } from "@/lib/subscription";
+import { subState } from "@/lib/subscription";
 import SetupSection from "../setup-section";
+import StatusCard from "../../account/status-card";
 
+const btnGhost =
+  "rounded-xl border border-line px-4 py-2.5 text-sm transition hover:border-accent";
+
+/**
+ * Персональная страница из письма: та же инструкция и то же состояние доступа,
+ * что и в кабинете, но открывается по ссылке — без входа.
+ */
 export default async function SetupPage({
   params,
 }: {
@@ -14,132 +21,91 @@ export default async function SetupPage({
   const { token } = await params;
   const sub = await getStore().findSubByToken(token);
 
-  // Состояние подписки: триал / активна / грейс-период (сутки) / закончилась.
-  const state = sub ? subState(sub) : "unknown";
-  const left = sub ? timeLeft(sub) : null;
-  const renewPlanId = sub && !sub.isTrial ? sub.planId : (plans.find((p) => p.popular) ?? plans[0]).id;
-  const renewHref = sub
-    ? `/checkout?plan=${renewPlanId}&email=${encodeURIComponent(sub.email)}`
-    : "/#tarify";
-  const tgLink = sub && !sub.telegramChatId ? telegramLinkUrl(sub.token) : null;
+  if (!sub) {
+    return (
+      <main className="mx-auto max-w-md px-5 py-16">
+        <h1 className="text-2xl font-semibold tracking-tight">Ссылка не найдена</h1>
+        <p className="mt-2 text-muted">
+          Войдите в кабинет — там находится актуальная инструкция и ваша подписка.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Link
+            href="/account"
+            className="rounded-xl bg-primary px-5 py-2.5 font-medium text-white transition hover:brightness-110"
+          >
+            Войти в кабинет →
+          </Link>
+          <Link href="/support" className={btnGhost}>
+            Связаться с поддержкой
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  const state = subState(sub);
+  const tgLink = sub.telegramChatId ? null : telegramLinkUrl(sub.token);
 
   return (
-    <main className="mx-auto max-w-2xl px-5 py-16">
-      {state === "grace" && (
-        <div className="mb-6 rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4 text-sm">
-          <p className="font-medium text-amber-700">
-            Подписка закончилась — доступ отключится в ближайшие часы
-          </p>
-          <p className="mt-1 text-muted">
-            Продлите сейчас, и ничего перенастраивать не придётся.
-          </p>
-          <Link
-            href={renewHref}
-            className="mt-3 inline-block rounded-xl bg-primary px-4 py-2 font-medium text-white transition hover:brightness-110"
-          >
-            Продлить
-          </Link>
-        </div>
-      )}
-      {state === "expired" && (
-        <div className="mb-6 rounded-2xl border border-bad/40 bg-bad/10 p-4 text-sm">
-          <p className="font-medium text-bad">Подписка закончилась</p>
-          <p className="mt-1 text-muted">
-            После оплаты доступ включится сам — ссылка и настройки прежние.
-          </p>
-          <Link
-            href={renewHref}
-            className="mt-3 inline-block rounded-xl bg-primary px-4 py-2 font-medium text-white transition hover:brightness-110"
-          >
-            Возобновить
-          </Link>
-        </div>
-      )}
-      {state !== "expired" && state !== "grace" && (
-        <span className="inline-flex items-center gap-2 rounded-full border border-good/40 bg-good/10 px-3 py-1 text-xs text-good">
-          <span className="h-1.5 w-1.5 rounded-full bg-good" />
-          {state === "trial" && left
-            ? `Пробный доступ · осталось ${left.days > 1 ? `${left.days} дн.` : `${left.hours} ч.`}`
-            : "Доступ активен"}
-        </span>
-      )}
-
-      <h1 className="mt-5 text-3xl font-semibold tracking-tight">
-        Осталось два шага
+    <main className="mx-auto max-w-5xl px-5 py-16">
+      <Link href="/account" className="text-sm text-muted hover:text-fg">
+        ← В кабинет
+      </Link>
+      <h1 className="mt-6 text-3xl font-semibold tracking-tight">
+        Настройте ваше устройство
       </h1>
       <p className="mt-2 text-muted">
-        Установите приложение и добавьте в него подписку — вручную ничего
-        настраивать не нужно. Дальше внутри приложения включите переключатель.
+        Эта персональная страница доступна по ссылке из письма.
       </p>
-      {sub && (state === "active" || state === "trial") && (
-        <p className="mt-2 text-sm text-muted">
-          {state === "trial" ? "Пробный доступ" : "Доступ"} действует до{" "}
-          {formatDate(sub.expiresAt)}
-          {sub.autoRenew ? " · автопродление включено" : ""}. Сохраните эту
-          страницу — она же доступна из{" "}
+
+      {state === "none" ? (
+        <p className="mt-8 rounded-2xl border border-line bg-surface p-5 text-sm text-muted">
+          Доступ ещё не выбран.{" "}
           <Link href="/account" className="text-accent-ink hover:underline">
-            кабинета
+            Включите пробный период или выберите срок
           </Link>
           .
         </p>
-      )}
-
-      <div className="mt-8">
-        {sub && state === "none" ? (
-          <p className="text-sm text-muted">
-            Доступ ещё не выбран.{" "}
-            <Link href="/account" className="text-accent-ink hover:underline">
-              Включить пробный период или выбрать тариф
-            </Link>
-            .
-          </p>
-        ) : sub ? (
+      ) : (
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
           <SetupSection sub={sub} />
-        ) : (
-          <p className="text-sm text-bad">Ссылка не найдена. Войдите в кабинет — там та же инструкция.</p>
-        )}
-      </div>
-
-      {tgLink && (
-        <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
-          <h3 className="font-medium">Напомнить, когда доступ будет заканчиваться?</h3>
-          <p className="mt-1.5 text-sm leading-relaxed text-muted">
-            Подключите уведомления в Telegram — напишем за сутки до конца,
-            чтобы VPN не выключился неожиданно.
-          </p>
-          <a
-            href={tgLink}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 inline-block rounded-xl border border-line px-4 py-2 text-sm transition hover:border-accent"
-          >
-            Уведомления в Telegram
-          </a>
+          <aside className="space-y-6">
+            <StatusCard sub={sub} />
+            {tgLink && (
+              <section className="rounded-2xl border border-line bg-surface p-5">
+                <h3 className="font-medium">Напомнить об окончании доступа</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">
+                  Напишем за сутки до конца, чтобы VPN не выключился неожиданно.
+                </p>
+                <a
+                  href={tgLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`mt-4 inline-block ${btnGhost}`}
+                >
+                  Уведомления в Telegram
+                </a>
+              </section>
+            )}
+            <section className="rounded-2xl border border-line bg-surface p-5">
+              <h3 className="font-medium">Что-то не получается?</h3>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href="/support" className={btnGhost}>
+                  Написать в поддержку
+                </Link>
+                <a
+                  href={brand.supportTelegram}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={btnGhost}
+                >
+                  Telegram
+                </a>
+              </div>
+            </section>
+          </aside>
         </div>
       )}
-
-      <div className="mt-8 rounded-2xl border border-line bg-surface p-5">
-        <h3 className="font-medium">Что-то не получается?</h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted">
-          Напишите нам — поможем подключиться и ответим на вопросы.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href="/support"
-            className="rounded-xl border border-line px-4 py-2 text-sm transition hover:border-accent"
-          >
-            Написать в поддержку
-          </Link>
-          <a
-            href={brand.supportTelegram}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl border border-line px-4 py-2 text-sm transition hover:border-accent"
-          >
-            Telegram
-          </a>
-        </div>
-      </div>
     </main>
   );
 }

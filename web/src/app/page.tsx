@@ -1,88 +1,95 @@
 import Image from "next/image";
 import Link from "next/link";
 import TrackedLink from "./tracked-link";
+import TrialOffer from "./trial-offer";
 import { brand } from "@/lib/brand";
 import { plans, TRIAL_DAYS } from "@/lib/plans";
+import { currentSub } from "@/lib/session";
+import { subState } from "@/lib/subscription";
 import { platformLabels, platformOrder } from "@/lib/clients";
 
+export const dynamic = "force-dynamic";
+
 const steps = [
-  {
-    title: "Зарегистрируйтесь по email",
-    text: `Код подтверждения придёт на почту. Первые ${TRIAL_DAYS} дня бесплатно — без карты, платить только если понравится.`,
-  },
-  {
-    title: "Установите приложение",
-    text: "Мы сами определим ваше устройство и дадим ссылку на нужное приложение.",
-  },
-  {
-    title: "Нажмите одну кнопку",
-    text: "Настройки подставятся автоматически. Дальше — просто переключатель «вкл», и соединение зашифровано.",
-  },
+  ["Создайте аккаунт", "Подтвердите почту и включите бесплатный период."],
+  ["Установите INCY", "Покажем нужную версию для вашего устройства."],
+  [
+    "Добавьте подписку",
+    "Настройки перенесутся в приложение. Останется включить VPN.",
+  ],
 ];
 
 const faq = [
   {
-    q: "Что будет, когда закончится пробный период?",
-    a: "Доступ просто выключится — деньги не списываются, карту мы не спрашиваем. За сутки до конца напомним на почту и в Telegram. Если понравилось, оплатите любой срок: ссылка и настройки останутся прежними, ничего заново ставить не нужно.",
+    q: "Что будет после пробного периода?",
+    a: "Доступ прекратится. Деньги не спишутся: карта не нужна. Продолжить можно после оплаты любого срока — ссылка и настройки останутся прежними.",
   },
   {
-    q: "Почему нужно ставить отдельное приложение?",
-    a: "Ни один сайт не может включить VPN сам — операционные системы iOS, Android, Windows и macOS запрещают это из соображений безопасности. Приложение обязательно у любого VPN-сервиса без исключений. Мы сделали так, что настройка занимает один тап: приложение получает все параметры по ссылке, вручную ничего вводить не нужно. Само приложение разработано другой компанией и распространяется независимо от нас.",
+    q: "Зачем отдельное приложение?",
+    a: "Сайт выдаёт доступ и настройки. Сам VPN работает через приложение INCY на устройстве: ни один сайт не может включить VPN сам, операционные системы это запрещают.",
   },
   {
-    q: "Что именно делает сервис?",
-    a: "Шифрует соединение между вашим устройством и нашим сервером. Пока вы подключены, ваш оператор связи, владелец сети Wi-Fi и другие посредники видят только зашифрованный поток, а не то, чем вы заняты. Мы, в свою очередь, не ведём журналов посещений и не анализируем ваш трафик.",
-  },
-  {
-    q: "На скольких устройствах работает одна подписка?",
-    a: "На всех ваших. Подписка выдаётся на аккаунт, а не на устройство: одна и та же ссылка работает на телефоне, ноутбуке и планшете — добавьте её в приложение на каждом. Делиться ссылкой с другими людьми не стоит: это ваш личный доступ.",
+    q: "На скольких устройствах работает подписка?",
+    a: "На всех ваших устройствах. Добавьте одну и ту же подписку на телефон, ноутбук и планшет. Делиться ссылкой с другими людьми не стоит: это ваш личный доступ.",
   },
   {
     q: "Будет ли тормозить интернет?",
-    a: "Мы используем современный протокол VLESS с Reality — он быстрее устаревших OpenVPN и L2TP и не режет скорость на видео. Разница с обычным подключением почти незаметна.",
+    a: "Скорость зависит от вашей сети и доступности сервера. Пробный период позволяет проверить работу в обычных условиях.",
+  },
+  {
+    q: "Что именно делает сервис?",
+    a: "Создаёт зашифрованное соединение между вашим устройством и VPN-сервером. Журналов посещений мы не ведём и трафик не анализируем.",
   },
   {
     q: "Для чего сервис использовать нельзя?",
-    a: "Для всего, что запрещено законом: атак на чужие системы, рассылки спама, распространения вредоносных программ и запрещённых материалов. Ответственность за то, к каким ресурсам вы обращаетесь, лежит на вас. Полный список — в Правилах использования, ссылка внизу страницы.",
+    a: "Ограничения перечислены в правилах использования, ссылка — внизу страницы.",
   },
   {
-    q: "Что если перестанет работать?",
-    a: "Напишите в поддержку в Telegram — обычно отвечаем в течение часа и выдаём резервный сервер. Если решить не получится, вернём деньги за неиспользованный период.",
+    q: "Что делать, если VPN перестал работать?",
+    a: "Напишите в поддержку. Поможем разобраться с настройкой и доступом.",
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const sub = await currentSub();
+  const state = sub ? subState(sub) : null;
+  const hasAccess = Boolean(state && state !== "none");
+  const cheapest = plans.reduce((a, b) => (a.perMonth <= b.perMonth ? a : b));
+
   return (
     <main>
       <section className="hero-glow">
         <div className="mx-auto max-w-5xl px-5 pb-20 pt-16 text-center sm:pt-24">
           <Image
             src="/emblem.png"
-            alt=""
-            width={88}
-            height={88}
+            alt={`Логотип ${brand.name}`}
+            width={144}
+            height={144}
             priority
             className="mx-auto rounded-full"
           />
           <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-good" />
-            Первые {TRIAL_DAYS} дня бесплатно
+            Первые {TRIAL_DAYS} дня бесплатно · без карты
           </span>
           <h1 className="mx-auto mt-5 max-w-3xl text-4xl font-semibold leading-tight tracking-tight text-primary sm:text-6xl">
-            {brand.heroTitle}
+            Ваше соединение —
+            <br />
+            только ваше.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg text-muted">
-            {brand.description} Настройка — одна кнопка, без инструкций на
-            двадцать шагов. {brand.name} — {brand.tagline.toLowerCase()}.
+            VPN на телефоне и компьютере.
+            <br />
+            Одна подписка для всех ваших устройств.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <TrackedLink
-              href="/start?mode=signup"
+              href={hasAccess ? "/account" : "/start?mode=signup&trial=1"}
               event="cta_click"
               detail="hero"
               className="rounded-xl bg-primary px-6 py-3 font-medium text-white transition hover:brightness-110"
             >
-              Попробовать {TRIAL_DAYS} дня бесплатно
+              {hasAccess ? "В личный кабинет" : `Попробовать ${TRIAL_DAYS} дня бесплатно`}
             </TrackedLink>
             <Link
               href="#kak"
@@ -92,7 +99,7 @@ export default function Home() {
             </Link>
           </div>
           <p className="mt-5 text-sm text-muted">
-            Работает на {platformOrder.map((p) => platformLabels[p]).join(" · ")}
+            {platformOrder.map((p) => platformLabels[p]).join(" · ")}
           </p>
         </div>
       </section>
@@ -102,70 +109,40 @@ export default function Home() {
           Три шага до подключения
         </h2>
         <ol className="mt-8 grid gap-4 sm:grid-cols-3">
-          {steps.map((s, i) => (
-            <li
-              key={s.title}
-              className="rounded-2xl border border-line bg-surface p-6"
-            >
+          {steps.map(([title, text], i) => (
+            <li key={title} className="rounded-2xl border border-line bg-surface p-6">
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent-soft text-sm font-semibold text-accent-ink">
                 {i + 1}
               </span>
-              <h3 className="mt-4 font-medium">{s.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{s.text}</p>
+              <h3 className="mt-4 font-medium">{title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{text}</p>
             </li>
           ))}
         </ol>
       </section>
 
       <section id="tarify" className="mx-auto max-w-5xl px-5 py-16">
-        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          Тарифы
-        </h2>
-        <p className="mt-2 text-muted">
-          Сначала {TRIAL_DAYS} дня бесплатно, платить — только если понравится.
-          Чем длиннее период, тем дешевле месяц.
-        </p>
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          {plans.map((plan) => (
-            <div
-              key={plan.id}
-              className={`relative rounded-2xl border p-6 ${
-                plan.popular
-                  ? "border-accent bg-accent-soft/40"
-                  : "border-line bg-surface"
-              }`}
-            >
-              {plan.popular && (
-                <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-white">
-                  Выгоднее всего
-                </span>
-              )}
-              <h3 className="font-medium">{plan.title}</h3>
-              <div className="mt-4 flex items-baseline gap-1.5">
-                <span className="text-3xl font-semibold">{plan.perMonth} ₽</span>
-                <span className="text-sm text-muted">/ мес</span>
-              </div>
-              <p className="mt-1 text-sm text-muted">
-                {plan.price} ₽ за весь период
-                {plan.discount ? ` · выгода ${plan.discount}%` : ""}
-              </p>
-              <TrackedLink
-                href={`/checkout?plan=${plan.id}`}
-                event="tariff_click"
-                detail={plan.id}
-                className={`mt-6 block rounded-xl px-4 py-2.5 text-center font-medium transition ${
-                  plan.popular
-                    ? "bg-primary text-white hover:brightness-110"
-                    : "border border-line text-fg hover:border-accent"
-                }`}
-              >
-                Выбрать
-              </TrackedLink>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            Попробуйте. Затем решите.
+          </h2>
+          <TrackedLink
+            href="/plans"
+            event="tariff_click"
+            detail="landing_all"
+            className="text-sm text-accent-ink hover:underline"
+          >
+            Все тарифы →
+          </TrackedLink>
         </div>
+        {!hasAccess && (
+          <div className="mt-6">
+            <TrialOffer signedIn={Boolean(sub)} place="landing" />
+          </div>
+        )}
         <p className="mt-6 text-sm text-muted">
-          Один тариф без хитростей: чем дольше срок, тем дешевле месяц.
+          После пробного периода — от {cheapest.perMonth} ₽ в месяц при оплате{" "}
+          {cheapest.months} месяцев. Полная сумма — {cheapest.price.toLocaleString("ru-RU")} ₽.
         </p>
       </section>
 
@@ -178,9 +155,7 @@ export default function Home() {
             <details key={item.q} className="group py-5">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium">
                 {item.q}
-                <span className="text-muted transition group-open:rotate-45">
-                  +
-                </span>
+                <span className="text-muted transition group-open:rotate-45">+</span>
               </summary>
               <p className="mt-3 text-sm leading-relaxed text-muted">{item.a}</p>
             </details>

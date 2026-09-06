@@ -8,6 +8,8 @@ export type Plan = {
   perMonth: number;
   /** Скидка относительно месячного тарифа, в процентах. */
   discount?: number;
+  /** Короткая подпись в выборе срока: чем этот срок отличается от соседних. */
+  note: string;
   popular?: boolean;
 };
 
@@ -19,6 +21,7 @@ function makePlan(
   months: number,
   title: string,
   price: number,
+  note: string,
   popular = false,
 ): Plan {
   const perMonth = Math.round(price / months);
@@ -29,15 +32,18 @@ function makePlan(
     title,
     price,
     perMonth,
+    note,
     discount: discount > 0 ? discount : undefined,
     popular,
   };
 }
 
 export const plans: Plan[] = [
-  makePlan("m1", 1, "1 месяц", MONTHLY),
-  makePlan("m6", 6, "6 месяцев", 1350, true),
-  makePlan("m12", 12, "12 месяцев", 2400),
+  makePlan("m1", 1, "1 месяц", MONTHLY, "Короткий срок"),
+  makePlan("m6", 6, "6 месяцев", 1350, "Экономия 10%", true),
+  // Подпись «самая низкая цена за месяц» стоит у 12 месяцев, а не у 6:
+  // выгоднее всего именно длинный срок, макет 02 это исправляет.
+  makePlan("m12", 12, "12 месяцев", 2400, "Самая низкая цена за месяц"),
 ];
 
 export function findPlan(id: string): Plan | undefined {

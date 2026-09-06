@@ -22,7 +22,12 @@ export async function POST(req: NextRequest) {
   const form = await req.formData();
   const mode = String(form.get("mode") ?? "signup");
   const email = String(form.get("email") ?? "").trim().toLowerCase();
-  const back = mode === "reset" ? "/start?mode=reset" : "/start?mode=signup";
+  // Выбор «попробовать бесплатно» сделан ещё на лендинге: тащим его через
+  // всю регистрацию, включая возвраты с ошибками, и включаем пробный период
+  // сразу после подтверждения почты.
+  const trial = mode === "signup" && form.get("intent") === "trial";
+  const back =
+    mode === "reset" ? "/start?mode=reset" : `/start?mode=signup${trial ? "&trial=1" : ""}`;
 
   if (!email.includes("@") || email.length > 200) {
     return NextResponse.redirect(absoluteUrl(req, `${back}&err=email`), { status: 303 });
@@ -78,7 +83,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.redirect(absoluteUrl(req, `${back}&err=send`), { status: 303 });
   }
   return NextResponse.redirect(
-    absoluteUrl(req, `/start/verify?email=${encodeURIComponent(email)}&mode=${mode}`),
+    absoluteUrl(
+      req,
+      `/start/verify?email=${encodeURIComponent(email)}&mode=${mode}${trial ? "&trial=1" : ""}`,
+    ),
     { status: 303 },
   );
 }

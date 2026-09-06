@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { absoluteUrl } from "@/lib/site";
 import { getStore } from "@/lib/db";
 import { setSession } from "@/lib/session";
-import { createAccount } from "@/lib/subscription";
+import { createAccount, startTrial } from "@/lib/subscription";
+import { notify } from "@/lib/notify";
 import { track } from "@/lib/analytics";
 
 /**
@@ -18,6 +19,9 @@ export async function POST(req: NextRequest) {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const code = String(form.get("code") ?? "").replace(/\D/g, "");
   const mode = String(form.get("mode") ?? "signup");
+  // «3 дня бесплатно» выбрано до регистрации: включаем сразу, не заставляя
+  // выбирать доступ второй раз уже в кабинете.
+  const wantsTrial = form.get("intent") === "trial";
   const back = `/start/verify?email=${encodeURIComponent(email)}&mode=${mode}`;
 
   if (!email.includes("@") || code.length !== 6) {
@@ -52,6 +56,14 @@ export async function POST(req: NextRequest) {
     sub = await createAccount(email, pending.passwordHash);
     isNew = true;
     await track(req.headers, "account_created");
+    if (wantsTrial) {
+      const started = await startTrial(sub);
+      if (started) {
+        sub = started;
+        await track(req.headers, "trial_started");
+        notify(started, "trial").catch(() => {});
+      }
+    }
   } else if (pending.passwordHash) {
     await store.setPassword(sub.token, pending.passwordHash);
     await track(req.headers, "password_reset");

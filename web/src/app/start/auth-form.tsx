@@ -17,9 +17,13 @@ const input =
 export default function AuthForm({
   mode,
   defaultEmail,
+  trial = false,
 }: {
   mode: "login" | "signup" | "reset";
   defaultEmail: string;
+  /** Человек пришёл с кнопки «попробовать бесплатно»: включим пробный сразу
+      после подтверждения почты, чтобы не спрашивать выбор второй раз. */
+  trial?: boolean;
 }) {
   const [terms, setTerms] = useState(false);
   const [privacy, setPrivacy] = useState(false);
@@ -41,6 +45,7 @@ export default function AuthForm({
       className="mt-6 space-y-4 rounded-2xl border border-line bg-surface p-6"
     >
       {mode !== "login" && <input type="hidden" name="mode" value={mode} />}
+      {mode === "signup" && trial && <input type="hidden" name="intent" value="trial" />}
 
       <label className="block">
         <span className="text-sm text-muted">Почта</span>

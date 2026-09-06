@@ -28,20 +28,30 @@ export default async function CheckoutPage({
 
   return (
     <main className="mx-auto max-w-md px-5 py-16">
-      <Link href={sub ? "/account" : "/#tarify"} className="text-sm text-muted hover:text-fg">
-        ← {sub ? "В личный кабинет" : "Другой срок"}
+      <Link href="/plans" className="text-sm text-muted hover:text-fg">
+        ← К тарифам
       </Link>
 
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">Оплата</h1>
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">Оплата подписки</h1>
+      <p className="mt-2 text-muted">Проверьте срок и почту перед переходом в банк.</p>
 
       <div className="mt-6 rounded-2xl border border-line bg-surface p-6">
-        <div className="flex items-baseline justify-between">
-          <span className="text-muted">{plan.title}</span>
-          <span className="text-2xl font-semibold">{plan.price} ₽</span>
+        <div className="divide-y divide-line/70 text-sm">
+          <div className="flex items-baseline justify-between gap-3 pb-2.5">
+            <span className="text-muted">{brand.name}</span>
+            <b className="font-medium">{plan.title}</b>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 py-2.5">
+            <span className="text-muted">В пересчёте на месяц</span>
+            <b className="font-medium">{plan.perMonth} ₽</b>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 pt-2.5">
+            <span className="text-muted">Одним платежом</span>
+            <b className="text-xl font-semibold">
+              {plan.price.toLocaleString("ru-RU")} ₽
+            </b>
+          </div>
         </div>
-        <p className="mt-1 text-sm text-muted">
-          {plan.perMonth} ₽ в месяц · все ваши устройства
-        </p>
 
         {err === "bank" && (
           <p className="mt-4 rounded-xl border border-bad/40 bg-bad/10 p-3 text-sm text-bad">
@@ -81,8 +91,8 @@ export default async function CheckoutPage({
             : "Приём оплаты ещё настраивается: сейчас доступ включится сразу, без списания."}
         </p>
         <p className="mt-2 text-center text-xs text-muted">
-          Если доступ у вас уже есть, в том числе пробный, срок прибавится к
-          остатку. Настраивать заново ничего не нужно.
+          Новый срок добавляется к остатку доступа, в том числе пробного.
+          Настраивать заново ничего не нужно.
         </p>
       </div>
     </main>
