@@ -55,9 +55,10 @@ export interface Panel {
  * Запасной путь к панели — ретранслятор на Cloudflare Workers.
  *
  * Сеть хостинга сайта и сеть сервера панели не видят друг друга: пакеты не
- * доходят в обе стороны. Cloudflare доступен обеим, поэтому если прямой
- * адрес не отвечает, запросы идут через него. Адрес не секрет, поэтому
- * задан прямо здесь: сайт чинится сам, без правки переменных на хостинге.
+ * доходят в обе стороны. Cloudflare доступен обеим, поэтому ходим через него
+ * СРАЗУ, а прямой адрес держим запасным — иначе каждый первый запрос платил
+ * бы таймаут за заведомо мёртвую попытку. Адрес не секрет, поэтому задан
+ * прямо здесь: сайт работает без правки переменных на хостинге.
  * Переопределяется переменной PANEL_PROXY_URL, отключается значением "off".
  */
 const PANEL_PROXY_DEFAULT = "https://irek-panel-proxy.nikitasoin.workers.dev";
@@ -120,10 +121,12 @@ type PanelUser = {
 };
 
 class RemnawavePanel implements Panel {
+  /** Прямой адрес панели из PANEL_URL — запасной путь. */
+  private readonly directBase: string;
   /**
-   * Адрес, по которому панель реально отвечает. Начинаем с прямого, при
-   * сетевой ошибке один раз пробуем ретранслятор и дальше держимся за то,
-   * что сработало. Ошибки самой панели (4xx/5xx) переключением не считаются.
+   * Адрес, по которому панель реально отвечает. Стартуем с ретранслятора,
+   * при сетевой ошибке пробуем прямой и дальше держимся за то, что
+   * сработало. Ошибки самой панели (4xx/5xx) переключением не считаются.
    */
   private activeBase: string;
 
@@ -132,13 +135,13 @@ class RemnawavePanel implements Panel {
     private readonly token: string,
     private readonly squadUuid: string,
   ) {
-    this.activeBase = baseUrl.replace(/\/$/, "");
+    this.directBase = baseUrl.replace(/\/$/, "");
+    this.activeBase = panelProxyUrl() ?? this.directBase;
   }
 
-  /** Кандидаты по порядку: текущий рабочий, затем ретранслятор. */
+  /** Кандидаты по порядку: рабочий, ретранслятор, прямой. Без повторов. */
   private bases(): string[] {
-    const proxy = panelProxyUrl();
-    return proxy && proxy !== this.activeBase ? [this.activeBase, proxy] : [this.activeBase];
+    return [...new Set([this.activeBase, panelProxyUrl(), this.directBase].filter(Boolean) as string[])];
   }
 
   /** Публичный адрес для ссылок клиенту — тот, который отвечает. */

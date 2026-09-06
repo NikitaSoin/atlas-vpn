@@ -16,20 +16,24 @@ export function telegramLinkUrl(token: string): string | null {
 /**
  * Запасной путь к Bot API — ретранслятор на Cloudflare Workers.
  * Из российских ЦОД `api.telegram.org` недоступен: вебхуки приходят (их шлёт
- * Telegram), а отправка молча не проходит. Адрес не секрет, задан здесь,
+ * Telegram), а отправка молча не проходит. Поэтому ходим через ретранслятор
+ * сразу, прямой адрес — запасной. Адрес воркера не секрет и задан здесь,
  * чтобы всё работало без правки переменных. Переопределяется
  * TELEGRAM_API_BASE, отключается значением "off".
  */
 const TELEGRAM_PROXY_DEFAULT = "https://irek-telegram-proxy.nikitasoin.workers.dev";
 const TELEGRAM_DIRECT = "https://api.telegram.org";
 
+function telegramProxy(): string | null {
+  const v = (process.env.TELEGRAM_API_BASE ?? TELEGRAM_PROXY_DEFAULT).trim();
+  return v && v !== "off" ? v.replace(/\/$/, "") : null;
+}
+
 /** Адрес, который сработал последним, — чтобы не ходить дважды каждый раз. */
-let activeBase = process.env.TELEGRAM_API_BASE?.trim() || TELEGRAM_DIRECT;
+let activeBase = telegramProxy() ?? TELEGRAM_DIRECT;
 
 function telegramBases(): string[] {
-  const proxy = (process.env.TELEGRAM_API_BASE ?? TELEGRAM_PROXY_DEFAULT).trim();
-  const fallback = proxy && proxy !== "off" ? proxy.replace(/\/$/, "") : null;
-  return fallback && fallback !== activeBase ? [activeBase, fallback] : [activeBase];
+  return [...new Set([activeBase, telegramProxy(), TELEGRAM_DIRECT].filter(Boolean) as string[])];
 }
 
 export async function sendTelegram(chatId: string, text: string): Promise<boolean> {
