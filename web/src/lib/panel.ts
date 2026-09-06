@@ -162,7 +162,10 @@ class RemnawavePanel implements Panel {
     return {
       userId: String(u.id),
       token: u.shortUuid,
-      url: u.subscriptionUrl,
+      // Панель отдаёт ссылку на свой прямой адрес. Собираем её от baseUrl:
+      // если сайт ходит через ретранслятор, клиент получит тот же путь и
+      // сможет обновлять подписку даже там, где прямой адрес недоступен.
+      url: `${this.baseUrl.replace(/\/$/, "")}/api/sub/${u.shortUuid}`,
       rawLink: await this.fetchRawLink(u.shortUuid),
       expiresAt: new Date(u.expireAt),
     };
