@@ -102,6 +102,11 @@ async function fetchRawLink(shortUuid) {
 
 const pool = new pg.Pool(pgConfig(DATABASE_URL));
 try {
+  // Колонки могли ещё не появиться, если сайт с новой схемой не пересобран.
+  await pool.query(`
+    ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_url TEXT;
+    ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS panel_link TEXT;
+  `);
   // Берём и тех, кому доступ ещё не выдан, и тех, у кого не сохранена ссылка.
   const { rows } = await pool.query(
     `SELECT token, email, is_trial, expires_at, panel_token FROM subscriptions
