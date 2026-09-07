@@ -37,18 +37,19 @@ export function credentialsShape() {
   const key = process.env.TBANK_TERMINAL_KEY ?? "";
   const pass = process.env.TBANK_PASSWORD ?? "";
   return {
+    // Начало ключа показываем целиком: у двух разных демо-терминалов и длина,
+    // и хвост DEMO совпадают, и по ним не отличить, какой из них в панели.
+    // Ключ терминала не секрет, он уходит в браузер на форме оплаты.
     ключ: {
       длина: key.length,
       обрезкаПробелов: key !== key.trim(),
+      начало: key.trim().slice(0, 6),
       хвост: key.trim().slice(-4),
-      ожидается: "17 символов, хвост DEMO",
     },
     пароль: {
       длина: pass.length,
       обрезкаПробелов: pass !== pass.trim(),
       хвост: pass.trim().slice(-2),
-      решёток: (pass.match(/#/g) ?? []).length,
-      ожидается: "16 символов, хвост $J, решёток 3",
     },
   };
 }
