@@ -137,9 +137,8 @@ export default function SetupClient({
                 {client.name}.
               </p>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                В списке появятся два сервера — <b className="font-medium text-fg">NL-1</b> и{" "}
-                <b className="font-medium text-fg">NL-2</b>. Это один и тот же доступ по
-                разным каналам. Начните с NL-1; если интернет не идёт, выберите NL-2.
+                Если серверов в списке несколько, это один и тот же доступ по разным
+                каналам: выбирайте любой, а если интернет не идёт — соседний.
               </p>
               <div className="mt-4">
                 {client.deepLink && importLink ? (
