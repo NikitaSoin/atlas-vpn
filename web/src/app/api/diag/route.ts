@@ -158,7 +158,8 @@ export async function GET(req: NextRequest) {
         ["cloudflare", "cloudflare.com"],
         ["workers.dev", "workers.dev"],
         ["github", "api.github.com"],
-        ["riga-direct", "95.182.85.234"],
+        // Сервер в Риге удалён 08.09.2026, панель и узел живут в Нидерландах.
+        ["node-direct", "185.234.9.173"],
       ].map(async ([name, host]) => [name, (await probe(host, 443, 6000)).ok]),
     ),
   );
