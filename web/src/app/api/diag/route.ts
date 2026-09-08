@@ -149,7 +149,16 @@ export async function GET(req: NextRequest) {
     .catch((e: Error) => ({ ok: false, mode: usingMemoryStore ? "memory" : "postgres", error: e.message }));
   const panel = await panelProbe();
   const panelNet = await panelNetProbe();
-  const payments = acquiringConfigured() ? await probePayments() : null;
+  // Проба создаёт НАСТОЯЩИЙ платёж на рубль. На демо-терминале это безобидно,
+  // на боевом — мусор в кабинете банка при каждом запросе диагностики.
+  // Поэтому на боевом терминале пробуем только по явному запросу: ?pay=1
+  const wantPay = req.nextUrl.searchParams.get("pay") === "1";
+  const payments =
+    acquiringConfigured() && (acquiringDemo() || wantPay)
+      ? await probePayments()
+      : acquiringConfigured()
+        ? { skipped: "боевой терминал, проба по запросу: добавьте &pay=1" }
+        : null;
   // Куда сайт вообще дотягивается — чтобы понять, через что пускать запросы к панели.
   const reach = Object.fromEntries(
     await Promise.all(
