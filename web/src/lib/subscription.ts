@@ -210,6 +210,54 @@ export async function applyPayment(
   return provisionPanel(sub);
 }
 
+/**
+ * Возврат денег: снимаем ровно тот срок, который дала возвращённая оплата.
+ *
+ * Раньше здесь срок обнулялся целиком, и вместе с возвращённым месяцем сгорал
+ * остаток пробного периода и другие оплаченные месяцы. Так нельзя: человеку
+ * вернули деньги за одну покупку, а не за всё, что у него было.
+ *
+ * `share` — какая доля платежа возвращена: 1 при полном возврате, меньше при
+ * частичном. Срок не уходит дальше текущего момента: если после вычитания он
+ * оказывается в прошлом, доступ просто заканчивается сейчас.
+ *
+ * Автопродление выключаем в любом случае: человек, попросивший деньги назад,
+ * не ждёт нового списания.
+ */
+export async function revokePayment(
+  email: string,
+  plan: Plan,
+  share = 1,
+): Promise<SubRecord | null> {
+  const store = getStore();
+  const sub = await store.findSubByEmail(email);
+  if (!sub) return null;
+
+  const part = Math.min(Math.max(share, 0), 1);
+  // Сколько времени дала эта оплата: считаем от нынешнего срока назад на её
+  // длительность. Так учитываются и разная длина месяцев, и переход через год.
+  const grantedMs =
+    sub.expiresAt.getTime() - addMonths(sub.expiresAt, -plan.months).getTime();
+  const now = new Date();
+  const rolled = new Date(sub.expiresAt.getTime() - Math.round(grantedMs * part));
+  const expiresAt = rolled > now ? rolled : now;
+
+  const updated = (await store.updateSub(sub.token, { expiresAt, autoRenew: false })) ?? sub;
+  if (updated.panelToken) {
+    try {
+      await getPanel().updateSubscription(
+        updated.panelToken,
+        { expiresAt: panelExpiry(expiresAt, updated.isTrial) },
+        updated.panelUserId,
+      );
+    } catch (e) {
+      // Срок в базе уже верный, панель догонит при следующей сверке.
+      console.error("[возврат] панель не обновилась:", (e as Error).message);
+    }
+  }
+  return updated;
+}
+
 /** Оплата была только что: показываем баннер «оплата получена» час после неё. */
 export function paidRecently(grantedAt: Date | null | undefined): boolean {
   if (!grantedAt) return false;

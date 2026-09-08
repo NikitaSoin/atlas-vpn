@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
 import { findPlan } from "@/lib/plans";
-import { applyPayment } from "@/lib/subscription";
+import { applyPayment, revokePayment } from "@/lib/subscription";
 import { notify } from "@/lib/notify";
 import { track } from "@/lib/analytics";
 import {
@@ -65,10 +65,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (REFUND_STATUSES.has(status) && payment.grantedAt) {
-    // Деньги вернули — забираем доступ: срок откатываем на момент возврата.
-    const sub = await store.findSubByEmail(payment.email);
-    if (sub) await store.updateSub(sub.token, { expiresAt: new Date(), autoRenew: false });
-    await store.clearGranted(orderId);
+    // Возврат забирает ровно свою часть срока, а не весь доступ. Остаток
+    // пробного периода и другие оплаченные месяцы человека не касаются:
+    // ему вернули деньги за одну покупку, а не за всё сразу.
+    //
+    // Банк присылает в Amount возвращённую сумму. При частичном возврате
+    // снимаем пропорциональную часть срока, при полном — всю.
+    const refunded = Number(body.Amount ?? 0);
+    const share = refunded > 0 && payment.amount > 0 ? refunded / payment.amount : 1;
+    const plan = findPlan(payment.planId);
+    if (plan) {
+      const sub = await revokePayment(payment.email, plan, share);
+      if (sub) notify(sub, "refunded").catch(() => {});
+    }
+    // Отметку о начислении снимаем только при полном возврате: иначе второй
+    // частичный возврат по тому же заказу мы бы молча пропустили.
+    if (share >= 1) await store.clearGranted(orderId);
     await track(req.headers, "payment_refunded");
     return new Response("OK");
   }

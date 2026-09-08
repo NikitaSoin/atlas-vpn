@@ -18,7 +18,7 @@ async function deliver(sub: SubRecord, subject: string, text: string): Promise<b
   return results.some(Boolean);
 }
 
-export function messageFor(sub: SubRecord, kind: ReminderKind | "trial" | "paid") {
+export function messageFor(sub: SubRecord, kind: ReminderKind | "trial" | "paid" | "refunded") {
   const site = siteUrl();
   const setup = `${site}/setup/${sub.token}`;
   const renew = `${site}/checkout?email=${encodeURIComponent(sub.email)}`;
@@ -39,6 +39,20 @@ export function messageFor(sub: SubRecord, kind: ReminderKind | "trial" | "paid"
         text:
           `Спасибо! Доступ к ${brand.name} действует до ${until} (МСК).\n\n` +
           `Личная ссылка для настройки устройства (она не меняется):\n${setup}`,
+      };
+    case "refunded":
+      return {
+        subject: `${brand.name}: возврат оформлен`,
+        text:
+          `Мы вернули оплату за ${brand.name}. Деньги придут на ту же карту, ` +
+          `которой вы платили: обычно в течение трёх рабочих дней, по правилам банка — ` +
+          `до десяти. Отдельно подтверждать ничего не нужно.\n\n` +
+          (sub.expiresAt > new Date()
+            ? `Остальной ваш доступ не тронут: он действует до ${until} (МСК). ` +
+              `Мы сняли только тот срок, за который вернули деньги.\n\n`
+            : `Доступ по этой оплате закрыт.\n\n`) +
+          `Кабинет: ${site}/account\n` +
+          `Если возврат оформляли не вы — напишите в поддержку: ${brand.supportTelegram}`,
       };
     case "expiring":
       return {
@@ -65,7 +79,7 @@ export function messageFor(sub: SubRecord, kind: ReminderKind | "trial" | "paid"
   }
 }
 
-export async function notify(sub: SubRecord, kind: ReminderKind | "trial" | "paid") {
+export async function notify(sub: SubRecord, kind: ReminderKind | "trial" | "paid" | "refunded") {
   const { subject, text } = messageFor(sub, kind);
   return deliver(sub, subject, text);
 }

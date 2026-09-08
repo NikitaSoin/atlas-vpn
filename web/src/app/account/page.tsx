@@ -5,6 +5,7 @@ import { plans } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
 import { getStore } from "@/lib/db";
 import { formatDate, paidRecently, subState } from "@/lib/subscription";
+import { REFUND_STATUSES } from "@/lib/acquiring";
 import SetupSection from "../setup/setup-section";
 import TrialOffer from "../trial-offer";
 import PlanPicker from "../plans/plan-picker";
@@ -86,9 +87,32 @@ export default async function AccountPage({
   const lastPay = await getStore().lastPayment(sub.email);
   const justPaid = Boolean(paid) || paidRecently(lastPay?.grantedAt);
 
+  // Возврат виден человеку сразу: он только что нажал кнопку в банке и должен
+  // понимать, что деньги придут и что осталось от доступа. Показываем и когда
+  // доступа не осталось вовсе — иначе он увидит пустой экран без объяснения.
+  const refunded = Boolean(lastPay && REFUND_STATUSES.has(lastPay.status));
+  const stillActive = sub.expiresAt > new Date();
+  const refundNotice = refunded ? (
+    <div className="mt-6 rounded-2xl border border-line bg-surface p-4 text-sm">
+      <p className="font-medium">Возврат оформлен</p>
+      <p className="mt-1 leading-relaxed text-fg/80">
+        Деньги вернутся на ту же карту, которой вы платили. Обычно это занимает три
+        рабочих дня, по правилам банка — до десяти. Подтверждать ничего не нужно.
+        {stillActive
+          ? ` Остальной доступ не тронут: он действует до ${formatDate(sub.expiresAt)}.`
+          : " Доступ по этой оплате закрыт."}
+      </p>
+    </div>
+  ) : null;
+
   const state = subState(sub);
   if (state === "none")
-    return <ChooseAccess email={sub.email} trialUsed={sub.trialUsed} err={err} />;
+    return (
+      <>
+        {refundNotice}
+        <ChooseAccess email={sub.email} trialUsed={sub.trialUsed} err={err} />
+      </>
+    );
 
   const planTitle = sub.isTrial
     ? "Пробный доступ"
@@ -98,7 +122,9 @@ export default async function AccountPage({
     <main className="mx-auto max-w-5xl px-5 py-16">
       <Head email={sub.email} title={`Ваш ${brand.name}`} />
 
-      {justPaid && (
+      {refundNotice}
+
+      {justPaid && !refunded && (
         <div className="mt-6 rounded-2xl border border-good/40 bg-good/10 p-4 text-sm">
           <p className="font-medium text-good">Оплата получена</p>
           <p className="mt-1 text-fg/80">
