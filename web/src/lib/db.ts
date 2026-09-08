@@ -469,9 +469,24 @@ class PgStore implements Store {
 
   async createSub(rec: NewSub) {
     const { rows } = await this.q(
-      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial, panel_token, trial_used)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [rec.token, rec.email, rec.planId, rec.months, rec.autoRenew, rec.expiresAt, rec.isTrial, rec.panelToken ?? null, rec.isTrial],
+      // password_hash здесь обязателен. Без него аккаунт создавался без
+      // пароля, и вход по нему всегда отвечал «неверный пароль»: проверять
+      // было не с чем. В памяти хэш сохранялся, поэтому при разработке
+      // вживую это не всплывало (найдено 09.09.2026).
+      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial, panel_token, trial_used, password_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [
+        rec.token,
+        rec.email,
+        rec.planId,
+        rec.months,
+        rec.autoRenew,
+        rec.expiresAt,
+        rec.isTrial,
+        rec.panelToken ?? null,
+        rec.isTrial,
+        rec.passwordHash ?? null,
+      ],
     );
     return this.rowToSub(rows[0]);
   }
