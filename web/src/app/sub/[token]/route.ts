@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPanel } from "@/lib/panel";
+import { getStore } from "@/lib/db";
 import { siteUrl } from "@/lib/site";
 import { brand } from "@/lib/brand";
 import { incyRoutingHeader } from "@/lib/incy";
@@ -36,8 +37,37 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
     return new NextResponse("Not found", { status: 404 });
   }
 
+  /** Заголовки, которые мы ставим сами, одинаково для живой выдачи и для запасной. */
+  const ourHeaders = (h: Headers) => {
+    if (!h.has("content-type")) h.set("content-type", "text/plain; charset=utf-8");
+    // Панель подставляет сюда свой прямой адрес, недоступный из России, и
+    // приложение может на нём споткнуться. Показываем свой кабинет.
+    h.set("profile-web-page-url", `${siteUrl()}/account`);
+    h.set("support-url", brand.supportTelegram);
+    h.set("profile-title", `base64:${Buffer.from(brand.name, "utf8").toString("base64")}`);
+    // Маршрутизацию и DNS задаём мы, а не настройки на устройстве: иначе
+    // включённый VPN у части людей выглядит как «интернет пропал».
+    h.set("routing", incyRoutingHeader());
+    h.set("cache-control", "no-store");
+    return h;
+  };
+
+  /**
+   * Запасная выдача из базы. Панель — единственная точка отказа на этом пути,
+   * и когда она молчит, отдавать ошибку нельзя: часть клиентов на неё стирает
+   * список серверов, и человек остаётся без VPN, хотя узлы работают.
+   */
+  const fromCache = async () => {
+    const cached = await getStore()
+      .readSubBody(token)
+      .catch(() => null);
+    if (!cached) return null;
+    console.warn("[подписка] панель недоступна, отдаём сохранённую копию");
+    return new NextResponse(cached, { status: 200, headers: ourHeaders(new Headers()) });
+  };
+
   const base = getPanel().publicBase?.();
-  if (!base) return new NextResponse("Subscription unavailable", { status: 503 });
+  if (!base) return (await fromCache()) ?? new NextResponse("Subscription unavailable", { status: 503 });
 
   try {
     const upstream = await fetch(`${base}/api/sub/${token}`, {
@@ -50,28 +80,24 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
       signal: AbortSignal.timeout(15000),
       cache: "no-store",
     });
+    // 404 от панели — это ответ про конкретного пользователя, копия тут не
+    // поможет. Любой другой отказ означает, что панель недоступна.
     if (!upstream.ok) {
-      return new NextResponse("Subscription not found", { status: upstream.status });
+      if (upstream.status === 404) return new NextResponse("Subscription not found", { status: 404 });
+      return (await fromCache()) ?? new NextResponse("Subscription not found", { status: upstream.status });
     }
     const body = await upstream.text();
+    await getStore()
+      .cacheSubBody(token, body)
+      .catch((e) => console.error("[подписка] копия не сохранилась", (e as Error).message));
     const headers = new Headers();
     for (const h of PASS_THROUGH) {
       const v = upstream.headers.get(h);
       if (v) headers.set(h, v);
     }
-    if (!headers.has("content-type")) headers.set("content-type", "text/plain; charset=utf-8");
-    // Панель подставляет сюда свой прямой адрес, недоступный из России, и
-    // приложение может на нём споткнуться. Показываем свой кабинет.
-    headers.set("profile-web-page-url", `${siteUrl()}/account`);
-    headers.set("support-url", brand.supportTelegram);
-    headers.set("profile-title", `base64:${Buffer.from(brand.name, "utf8").toString("base64")}`);
-    // Маршрутизацию и DNS задаём мы, а не настройки на устройстве: иначе
-    // включённый VPN у части людей выглядит как «интернет пропал».
-    headers.set("routing", incyRoutingHeader());
-    headers.set("cache-control", "no-store");
-    return new NextResponse(body, { status: 200, headers });
+    return new NextResponse(body, { status: 200, headers: ourHeaders(headers) });
   } catch (e) {
     console.error("[подписка]", (e as Error).message);
-    return new NextResponse("Subscription temporarily unavailable", { status: 503 });
+    return (await fromCache()) ?? new NextResponse("Subscription temporarily unavailable", { status: 503 });
   }
 }

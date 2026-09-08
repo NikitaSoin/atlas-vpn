@@ -120,6 +120,17 @@ export interface Store {
   /** Сохранить выданный доступ целиком, чтобы страницы не ходили в панель. */
   setPanelAccess(token: string, access: PanelAccess): Promise<void>;
   /**
+   * Запомнить последнюю удачную выдачу подписки и достать её обратно.
+   *
+   * Панель — единственная точка отказа на пути обновления подписки, и когда
+   * она недоступна, приложение получает ошибку. Часть клиентов на такой ответ
+   * стирает список серверов, и человек остаётся без VPN, хотя сами узлы живы.
+   * Поэтому последнюю удачную выдачу храним и отдаём её, пока панель молчит.
+   * Ключ — токен панели, он же хвост подписочной ссылки.
+   */
+  cacheSubBody(panelToken: string, body: string): Promise<void>;
+  readSubBody(panelToken: string): Promise<string | null>;
+  /**
    * Записать согласие. Хранится навсегда: по ч. 1 ст. 9 152-ФЗ наличие
    * согласия доказывает оператор, а по ст. 438 ГК — факт акцепта оферты.
    */
@@ -276,6 +287,8 @@ ALTER TABLE email_codes ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE email_codes ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'signup';
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS two_factor BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sub_cache TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sub_cache_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS tickets (
   id          SERIAL PRIMARY KEY,
   token       TEXT UNIQUE NOT NULL,
@@ -470,6 +483,21 @@ class PgStore implements Store {
        WHERE token = $1`,
       [token, access.panelToken, access.panelUrl, access.panelLink, access.panelUserId],
     );
+  }
+
+  async cacheSubBody(panelToken: string, body: string) {
+    await this.q(
+      "UPDATE subscriptions SET sub_cache = $2, sub_cache_at = now() WHERE panel_token = $1",
+      [panelToken, body],
+    );
+  }
+
+  async readSubBody(panelToken: string) {
+    const { rows } = await this.q(
+      "SELECT sub_cache FROM subscriptions WHERE panel_token = $1 LIMIT 1",
+      [panelToken],
+    );
+    return (rows[0]?.sub_cache as string | null) ?? null;
   }
 
   async addConsent(rec: Omit<ConsentRecord, "createdAt">) {
@@ -853,6 +881,13 @@ class MemoryStore implements Store {
   async setPanelAccess(token: string, access: PanelAccess) {
     const sub = this.subs.find((s) => s.token === token);
     if (sub) Object.assign(sub, access);
+  }
+  private subBodies = new Map<string, string>();
+  async cacheSubBody(panelToken: string, body: string) {
+    this.subBodies.set(panelToken, body);
+  }
+  async readSubBody(panelToken: string) {
+    return this.subBodies.get(panelToken) ?? null;
   }
   async addConsent(rec: Omit<ConsentRecord, "createdAt">) {
     this.consents.push({ ...rec, createdAt: new Date() });
