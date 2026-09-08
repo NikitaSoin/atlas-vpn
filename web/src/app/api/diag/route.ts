@@ -4,7 +4,14 @@ import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
 import { X509Certificate } from "node:crypto";
 import { panelProxyUrl, usingMockPanel } from "@/lib/panel";
 import { mailConfigured } from "@/lib/mail";
-import { acquiringConfigured, acquiringDemo, credentialsShape, probePayments } from "@/lib/acquiring";
+import {
+  acquiringConfigured,
+  acquiringDemo,
+  credentialsShape,
+  probePayments,
+  taxationCode,
+  vatCode,
+} from "@/lib/acquiring";
 import { telegramConfigured } from "@/lib/telegram";
 import { siteUrl } from "@/lib/site";
 import { connect } from "node:net";
@@ -181,6 +188,8 @@ export async function GET(req: NextRequest) {
     reach,
     mail: mailConfigured(),
     acquiring: acquiringConfigured() ? (acquiringDemo() ? "демо-терминал" : "боевой терминал") : false,
+    // Попадает в фискальный чек — проверяется глазами, а не угадывается.
+    чек: { налогообложение: taxationCode(), ндс: vatCode() },
     payments,
     tbankReceived: credentialsShape(),
     smtpPort,

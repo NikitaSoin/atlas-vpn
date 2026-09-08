@@ -69,6 +69,9 @@ export async function POST(req: NextRequest) {
         orderId,
         amountKopecks: amount,
         description: `${brand.name} — доступ на ${plan.title.toLowerCase()}`,
+        // Наименование в фискальном чеке. Отдельно от описания платежа:
+        // в чеке нужна услуга, а не рекламная строка.
+        itemName: `Доступ к сервису ${brand.name}, ${plan.title.toLowerCase()}`,
         email,
         notificationUrl: absoluteUrl(req, "/api/payments/notification").toString(),
       });

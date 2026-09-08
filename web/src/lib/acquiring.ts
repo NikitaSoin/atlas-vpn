@@ -32,6 +32,47 @@ export const acquiringConfigured = () => Boolean(terminalKey() && terminalPasswo
 /** Демо-терминал виден по суффиксу DEMO — на витрине показываем плашку. */
 export const acquiringDemo = () => terminalKey().toUpperCase().endsWith("DEMO");
 
+/**
+ * Система налогообложения для фискального чека.
+ *
+ * Значение попадает в фискальный документ, поэтому оно вынесено в переменную
+ * окружения, а не зашито: ошибка здесь — ошибка в чеке перед налоговой.
+ * По умолчанию УСН «доходы», самый частый случай для ИП на услугах.
+ * Допустимые значения Т-Кассы: osn, usn_income, usn_income_outcome,
+ * envd, esn, patent.
+ */
+export const taxationCode = () => (process.env.TBANK_TAXATION ?? "usn_income").trim();
+
+/**
+ * Ставка НДС в позиции чека. На упрощёнке НДС нет — значение none.
+ * Допустимые: none, vat0, vat10, vat20, vat110, vat120.
+ */
+export const vatCode = () => (process.env.TBANK_VAT ?? "none").trim();
+
+/**
+ * Чек для 54-ФЗ. Продажа физлицу требует фискального документа, и банк
+ * пробивает его сам, если к терминалу подключена онлайн-касса. Позиция всегда
+ * одна: доступ к сервису на выбранный срок, полная предоплата.
+ * Наименование ограничено 128 знаками — это ограничение кассы, не наше.
+ */
+function receipt(email: string, itemName: string, amountKopecks: number) {
+  return {
+    Email: email,
+    Taxation: taxationCode(),
+    Items: [
+      {
+        Name: itemName.slice(0, 128),
+        Price: amountKopecks,
+        Quantity: 1,
+        Amount: amountKopecks,
+        PaymentMethod: "full_prepayment",
+        PaymentObject: "service",
+        Tax: vatCode(),
+      },
+    ],
+  };
+}
+
 /** Что реально приехало в переменные — без раскрытия секретов. */
 export function credentialsShape() {
   const key = process.env.TBANK_TERMINAL_KEY ?? "";
@@ -54,7 +95,11 @@ export function credentialsShape() {
   };
 }
 
-type Flat = Record<string, string | number | boolean | null | undefined>;
+/**
+ * Тело запроса к банку. Вложенные объекты допустимы: чек передаётся объектом,
+ * и в подпись он не входит — makeToken пропускает всё, что не скаляр.
+ */
+type Flat = Record<string, string | number | boolean | null | undefined | object>;
 
 function stringify(v: string | number | boolean): string {
   // Булевы — строчными, как в JSON: банк присылает "Success": true.
@@ -118,6 +163,9 @@ export async function initPayment(input: {
   orderId: string;
   amountKopecks: number;
   description: string;
+  /** Наименование позиции в чеке. Если не задано — берётся описание платежа. */
+  itemName?: string;
+  /** Почта покупателя: банк отправит на неё фискальный чек. */
   email: string;
   notificationUrl: string;
 }): Promise<InitResult> {
@@ -128,6 +176,8 @@ export async function initPayment(input: {
     NotificationURL: input.notificationUrl,
     // SuccessURL/FailURL намеренно не передаём — см. комментарий сверху.
     DATA: undefined,
+    // Вложенные объекты в подпись не входят — makeToken их пропускает.
+    Receipt: receipt(input.email, input.itemName ?? input.description, input.amountKopecks),
   });
   if (r.PaymentURL && !r.PaymentURL.includes("language=")) {
     const sep = r.PaymentURL.includes("?") ? "&" : "?";
