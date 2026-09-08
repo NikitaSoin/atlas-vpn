@@ -172,6 +172,49 @@ class RemnawavePanel implements Panel {
     return [...new Set([this.activeBase, panelProxyUrl(), this.directBase].filter(Boolean) as string[])];
   }
 
+  /** Отряд, в который зачисляем новых: разрешается один раз и запоминается. */
+  private squadResolved: string | null = null;
+
+  /**
+   * Какой отряд указывать при создании пользователя.
+   *
+   * Идентификатор отряда живёт в переменной окружения, а панель может быть
+   * поднята заново — так и случилось 08.09.2026, когда сервер с прежней
+   * панелью удалили. В переменной остался идентификатор от старой панели, и
+   * панель отвечала «Failed to create user», то есть регистрация молча
+   * ломалась на ровном месте.
+   *
+   * Поэтому идентификатор из переменной проверяем по списку панели, а если
+   * такого отряда нет — берём первый существующий и пишем предупреждение.
+   * У нас отряд всегда один, так что выбор однозначен.
+   */
+  private async squad(): Promise<string> {
+    if (this.squadResolved) return this.squadResolved;
+    try {
+      const r = await this.request<{ response: unknown }>("/api/internal-squads");
+      const raw = (r as { response: unknown }).response;
+      const list = (Array.isArray(raw)
+        ? raw
+        : ((raw as { internalSquads?: unknown[] } | null)?.internalSquads ?? [])) as {
+        uuid: string;
+      }[];
+      const known = list.some((x) => x.uuid === this.squadUuid);
+      if (known || list.length === 0) {
+        this.squadResolved = this.squadUuid;
+      } else {
+        this.squadResolved = list[0].uuid;
+        console.warn(
+          `[panel] отряд ${this.squadUuid} в панели не найден, использую ${list[0].uuid}. ` +
+            "Поправьте PANEL_SQUAD_UUID в переменных окружения.",
+        );
+      }
+    } catch {
+      // Панель не ответила — не выдумываем, идём с тем, что задано.
+      this.squadResolved = this.squadUuid;
+    }
+    return this.squadResolved;
+  }
+
   /** Публичный адрес для ссылок клиенту — тот, который отвечает. */
   publicBase(): string {
     return this.activeBase;
@@ -273,7 +316,7 @@ class RemnawavePanel implements Panel {
         trafficLimitBytes,
         // Лимит триала считается один раз за весь срок, без сброса по дням.
         trafficLimitStrategy: "NO_RESET",
-        activeInternalSquads: [this.squadUuid],
+        activeInternalSquads: [await this.squad()],
         // Поле email панели не заполняем — см. newPanelUsername().
       }),
     });
