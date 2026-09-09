@@ -25,8 +25,8 @@ export const LEGAL_DOCS = {
   privacy: {
     file: "privacy.md",
     title: "Политика в отношении обработки персональных данных",
-    version: "1.0",
-    from: "6 сентября 2026 г.",
+    version: "1.1",
+    from: "10 сентября 2026 г.",
   },
 } as const;
 
