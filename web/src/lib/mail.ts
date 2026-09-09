@@ -9,7 +9,21 @@ import { brand } from "./brand";
 export const mailConfigured = () =>
   process.env.SMTP_URL === "log" || Boolean(process.env.SMTP_URL && process.env.MAIL_FROM);
 
-export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
+/**
+ * Куда падают обращения из поддержки. Отдельной переменной, потому что ящик
+ * для чтения писем и ящик-отправитель — не обязательно одно и то же. Если
+ * переменная не задана, пишем на отправителя: лучше так, чем никуда.
+ */
+export const supportInbox = () =>
+  (process.env.SUPPORT_EMAIL ?? process.env.MAIL_FROM ?? "").trim();
+
+export async function sendMail(
+  to: string,
+  subject: string,
+  text: string,
+  /** Кому уйдёт ответ, если нажать «Ответить» в почте. */
+  replyTo?: string,
+): Promise<boolean> {
   if (!mailConfigured()) return false;
   // SMTP_URL=log — для локальной разработки: письмо печатается в консоль.
   if (process.env.SMTP_URL === "log") {
@@ -24,6 +38,7 @@ export async function sendMail(to: string, subject: string, text: string): Promi
       to,
       subject,
       text,
+      ...(replyTo ? { replyTo } : {}),
     });
     return true;
   } catch (e) {

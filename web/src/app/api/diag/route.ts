@@ -3,7 +3,7 @@ import { sameCode } from "@/lib/admin";
 import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
 import { X509Certificate } from "node:crypto";
 import { panelProxyUrl, usingMockPanel } from "@/lib/panel";
-import { mailConfigured } from "@/lib/mail";
+import { mailConfigured, supportInbox } from "@/lib/mail";
 import {
   acquiringConfigured,
   acquiringDemo,
@@ -190,6 +190,8 @@ export async function GET(req: NextRequest) {
     acquiring: acquiringConfigured() ? (acquiringDemo() ? "демо-терминал" : "боевой терминал") : false,
     // Попадает в фискальный чек — проверяется глазами, а не угадывается.
     чек: { налогообложение: taxationCode(), ндс: vatCode() },
+    // Куда падают обращения из поддержки. Пусто — значит никуда.
+    поддержка: supportInbox() || "НЕ ЗАДАНА",
     payments,
     tbankReceived: credentialsShape(),
     smtpPort,
