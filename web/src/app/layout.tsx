@@ -54,7 +54,6 @@ export default async function RootLayout({
                 className="rounded-full"
               />
               <span className="text-primary">IREK</span>
-              <span className="-ml-1 text-accent-ink">VPN</span>
             </Link>
             <nav className="flex items-center gap-4 text-[15px] text-muted sm:gap-6">
               <Link href="/plans" className="hover:text-fg">

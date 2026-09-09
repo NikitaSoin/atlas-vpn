@@ -133,7 +133,7 @@ export default function SetupClient({
             <div>
               <h3 className="font-medium">Добавьте подписку</h3>
               <p className="mt-1.5 text-sm leading-relaxed text-muted">
-                Настройки перенесутся автоматически. Затем включите VPN внутри{" "}
+                Настройки перенесутся автоматически. Затем включите соединение внутри{" "}
                 {client.name}.
               </p>
               <p className="mt-2 text-sm leading-relaxed text-muted">
@@ -216,7 +216,7 @@ export default function SetupClient({
       )}
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-4 text-sm text-muted">
-        <span>Статус VPN смотрите в приложении {client.name}.</span>
+        <span>Статус соединения смотрите в приложении {client.name}.</span>
         <Link href="/support" className="text-accent-ink hover:underline">
           Не получается?
         </Link>

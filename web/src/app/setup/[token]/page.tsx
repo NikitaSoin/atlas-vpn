@@ -75,7 +75,7 @@ export default async function SetupPage({
               <section className="rounded-2xl border border-line bg-surface p-5">
                 <h3 className="font-medium">Напомнить об окончании доступа</h3>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted">
-                  Напишем за сутки до конца, чтобы VPN не выключился неожиданно.
+                  Напишем за сутки до конца, чтобы доступ не отключился неожиданно.
                 </p>
                 <a
                   href={tgLink}

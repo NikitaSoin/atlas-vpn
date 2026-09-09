@@ -106,7 +106,7 @@ export default async function SettingsPage({
         <p className="mt-3 text-xs leading-relaxed text-muted">
           {sub.telegramChatId
             ? "Telegram подключён. Бот показывает срок по /status, /stop отключает уведомления."
-            : "Telegram необязателен для работы VPN."}
+            : "Telegram необязателен для работы сервиса."}
         </p>
       </section>
 
@@ -203,7 +203,7 @@ export default async function SettingsPage({
       <section className="mt-6 rounded-2xl border border-line/60 bg-ink p-5">
         <h2 className="font-medium">Удаление аккаунта</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">
-          Удалятся аккаунт, VPN-доступ и переписка с поддержкой. Оставшийся срок
+          Удалятся аккаунт, доступ и переписка с поддержкой. Оставшийся срок
           доступа сгорит, отменить удаление нельзя. Сведения об оплатах
           сохранятся в обезличенном виде — этого требует закон о бухгалтерском
           учёте.

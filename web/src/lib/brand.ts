@@ -8,12 +8,12 @@
  * смену региона магазина приложений и обход блокировок сюда возвращать нельзя.
  */
 export const brand = {
-  name: "IREK VPN",
+  name: "IREK",
   nameLatin: "IREK",
   tagline: "Просто работает",
   heroTitle: "Ваше соединение — только ваше",
   description:
-    "Шифрует интернет-соединение на iPhone, Android, Mac и Windows: в кафе, отеле и любой чужой сети никто не видит, что вы делаете.",
+    "Личный зашифрованный канал связи через наш сервер за рубежом. Работает на iPhone, Android, Mac и Windows: в кафе, отеле и любой чужой сети никто не видит, что вы делаете.",
   supportTelegram: "https://t.me/irek_vpn",
   supportEmail: "help@example.com",
   domain: "irekvpn.example.com",
