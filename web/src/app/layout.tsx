@@ -100,6 +100,12 @@ export default async function RootLayout({
                 <Link href="/legal/privacy" className="hover:text-fg">
                   Обработка данных
                 </Link>
+                <Link href="/terms" className="hover:text-fg">
+                  Оплата и возврат
+                </Link>
+                <Link href="/contacts" className="hover:text-fg">
+                  Контакты
+                </Link>
                 <Link href="/support" className="hover:text-fg">
                   Поддержка
                 </Link>
@@ -117,6 +123,7 @@ export default async function RootLayout({
                   {company.ogrnip && <> · ОГРНИП {company.ogrnip}</>}
                   {company.inn && <> · ИНН {company.inn}</>}
                   {company.email && <> · {company.email}</>}
+                  {company.phone && <> · {company.phone}</>}
                 </>
               ) : (
                 <span className="text-amber-700">

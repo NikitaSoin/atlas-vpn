@@ -6,6 +6,7 @@ import { currentSub } from "@/lib/session";
 import { getStore } from "@/lib/db";
 import { acquiringConfigured, acquiringDemo } from "@/lib/acquiring";
 import CheckoutForm from "./checkout-form";
+import PaymentMethods from "../payment-methods";
 
 /** Ключ формы живёт достаточно, чтобы человек успел подумать. */
 const NONCE_TTL_MIN = 60;
@@ -95,6 +96,10 @@ export default async function CheckoutPage({
           Настраивать заново ничего не нужно.
         </p>
       </div>
+      <div className="mt-6">
+        <PaymentMethods />
+      </div>
+
     </main>
   );
 }

@@ -39,6 +39,11 @@ export type Company = {
   /** Адрес регистрации. В подвале не показывается — только в оферте. */
   address: string;
   email: string;
+  /**
+   * Телефон службы поддержки. Требование эквайера: в контактах должны быть
+   * и почта, и телефон. Формат — как набирают, например +7 900 000-00-00.
+   */
+  phone: string;
   bank: {
     name: string;
     account: string;
@@ -56,6 +61,7 @@ export function getCompany(): Company {
     inn: process.env.COMPANY_INN?.trim() ?? "",
     address: process.env.COMPANY_ADDRESS?.trim() ?? "",
     email: process.env.COMPANY_EMAIL?.trim() ?? "",
+    phone: process.env.COMPANY_PHONE?.trim() ?? "",
     bank: {
       name: process.env.COMPANY_BANK_NAME?.trim() ?? "",
       account: process.env.COMPANY_BANK_ACCOUNT?.trim() ?? "",
