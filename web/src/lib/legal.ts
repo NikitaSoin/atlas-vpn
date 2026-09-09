@@ -10,12 +10,23 @@ import { siteUrl } from "./site";
  * с какой именно редакцией человек согласился.
  */
 export const LEGAL_DOCS = {
-  offer: { file: "offer.md", title: "Публичная оферта", version: "1.0" },
-  rules: { file: "rules.md", title: "Правила использования сервиса", version: "1.0" },
+  offer: {
+    file: "offer.md",
+    title: "Публичная оферта",
+    version: "1.1",
+    from: "10 сентября 2026 г.",
+  },
+  rules: {
+    file: "rules.md",
+    title: "Правила использования сервиса",
+    version: "1.1",
+    from: "10 сентября 2026 г.",
+  },
   privacy: {
     file: "privacy.md",
     title: "Политика в отношении обработки персональных данных",
     version: "1.0",
+    from: "6 сентября 2026 г.",
   },
 } as const;
 
@@ -23,8 +34,8 @@ export type LegalDocId = keyof typeof LEGAL_DOCS;
 
 export const isLegalDoc = (v: string): v is LegalDocId => v in LEGAL_DOCS;
 
-/** Дата, на которую документ действует: меняется вместе с версией. */
-const EFFECTIVE_FROM = "6 сентября 2026 г.";
+// Дата действия у каждого документа своя: редакции меняются не одновременно,
+// и одна общая дата врала бы про непересмотренный документ.
 
 /** Краткие сведения об операторе — для первого раздела политики. */
 function operatorBlock(c: Company): string {
@@ -80,7 +91,7 @@ function fillTemplate(text: string, docId: LegalDocId): string {
   const company = getCompany();
   return text
     .split("{{РЕДАКЦИЯ}}")
-    .join(`Редакция ${LEGAL_DOCS[docId].version} от ${EFFECTIVE_FROM}`)
+    .join(`Редакция ${LEGAL_DOCS[docId].version} от ${LEGAL_DOCS[docId].from}`)
     .split("{{САЙТ}}")
     .join(siteUrl())
     .split("{{ПОЧТА}}")
