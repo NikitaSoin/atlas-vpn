@@ -129,6 +129,38 @@ async function panelNetProbe() {
   }
 }
 
+/**
+ * Что реально пришло в SMTP_URL — без пароля.
+ *
+ * Нужен, когда почта не отправляется, а причина не видна: строка на хостинге
+ * может отличаться от той, что мы писали, если панель что-то обрезала или
+ * подменила. Пароль не показываем, только его длину.
+ */
+function smtpShape() {
+  const raw = process.env.SMTP_URL ?? "";
+  if (!raw) return { задано: false };
+  const base = {
+    задано: true,
+    длина: raw.length,
+    обрезкаПробелов: raw !== raw.trim(),
+    начало: raw.slice(0, 8),
+  };
+  try {
+    const u = new URL(raw.trim());
+    return {
+      ...base,
+      разобрано: true,
+      схема: u.protocol,
+      хост: u.hostname,
+      порт: u.port || "(по умолчанию)",
+      пользователь: decodeURIComponent(u.username),
+      длинаПароля: decodeURIComponent(u.password).length,
+    };
+  } catch (e) {
+    return { ...base, разобрано: false, ошибка: (e as Error).message };
+  }
+}
+
 function smtpTarget(): { host: string; port: number } | null {
   const url = process.env.SMTP_URL;
   if (!url || url === "log") return null;
@@ -192,6 +224,7 @@ export async function GET(req: NextRequest) {
     чек: { налогообложение: taxSystemCode(), ндс: vatCode() },
     // Куда падают обращения из поддержки. Пусто — значит никуда.
     поддержка: supportInbox() || "НЕ ЗАДАНА",
+    почтаНастройка: smtpShape(),
     payments,
     tbankReceived: credentialsShape(),
     smtpPort,
