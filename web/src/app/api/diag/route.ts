@@ -3,7 +3,7 @@ import { sameCode } from "@/lib/admin";
 import { getStore, normalizePem, usingMemoryStore } from "@/lib/db";
 import { X509Certificate } from "node:crypto";
 import { panelProxyUrl, usingMockPanel } from "@/lib/panel";
-import { mailConfigured, supportInbox } from "@/lib/mail";
+import { mailConfigured, smtpSettings, supportInbox } from "@/lib/mail";
 import {
   acquiringConfigured,
   acquiringDemo,
@@ -145,20 +145,18 @@ function smtpShape() {
     обрезкаПробелов: raw !== raw.trim(),
     начало: raw.slice(0, 8),
   };
-  try {
-    const u = new URL(raw.trim());
-    return {
-      ...base,
-      разобрано: true,
-      схема: u.protocol,
-      хост: u.hostname,
-      порт: u.port || "(по умолчанию)",
-      пользователь: decodeURIComponent(u.username),
-      длинаПароля: decodeURIComponent(u.password).length,
-    };
-  } catch (e) {
-    return { ...base, разобрано: false, ошибка: (e as Error).message };
-  }
+  const s = smtpSettings();
+  return s
+    ? {
+        ...base,
+        разобрано: true,
+        хост: s.host,
+        порт: s.port,
+        шифрование: s.secure,
+        пользователь: s.auth?.user ?? "(без входа)",
+        длинаПароля: s.auth?.pass.length ?? 0,
+      }
+    : { ...base, разобрано: false };
 }
 
 function smtpTarget(): { host: string; port: number } | null {
