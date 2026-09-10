@@ -68,7 +68,12 @@ export default async function VerifyPage({
         </button>
       </form>
 
-      <p className="mt-4 text-center text-sm text-muted">
+      {/*
+        Опечатка в адресе — самая частая причина «код не пришёл»: письмо уходит
+        в несуществующий ящик, а человек видит, что ничего не работает. Раньше
+        исправить адрес отсюда было нечем: повтор отправлял на тот же неверный.
+      */}
+      <p className="mt-4 text-center text-sm leading-relaxed text-muted">
         Если письма нет, проверьте папку «Спам».{" "}
         <Link
           href={`/start?mode=${mode === "2fa" ? "login" : (mode ?? "signup")}&email=${encodeURIComponent(email)}${trial === "1" ? "&trial=1" : ""}`}
@@ -76,6 +81,18 @@ export default async function VerifyPage({
         >
           {mode === "2fa" ? "Войти заново" : "Запросить код заново"}
         </Link>
+        {mode !== "2fa" && (
+          <>
+            <br />
+            Ошиблись в адресе?{" "}
+            <Link
+              href={`/start?mode=${mode ?? "signup"}${trial === "1" ? "&trial=1" : ""}`}
+              className="text-accent-ink hover:underline"
+            >
+              Указать другую почту
+            </Link>
+          </>
+        )}
       </p>
     </main>
   );
