@@ -12,6 +12,9 @@ import path from "node:path";
  * Файлы логотипов кладутся в `public/logos`. Брать их надо у правообладателя:
  * банковский — в кабинете эквайринга, платёжных систем — на их официальных
  * ресурсах. Своих версий чужих товарных знаков мы не рисуем.
+
+ * 10.09.2026 эквайринг переехал с Т-Кассы на ЮKassa: Т-Бизнес отказал в
+ * подключении, ЮKassa работает с этой категорией.
  *
  * Пока файла нет, вместо картинки выводится название: страница остаётся
  * осмысленной, а как только файл появится, он подхватится сам.
@@ -20,7 +23,8 @@ const METHODS = [
   { file: "mir.svg", label: "Мир" },
   { file: "visa.svg", label: "Visa" },
   { file: "mastercard.svg", label: "Mastercard" },
-  { file: "tpay.svg", label: "T-Pay" },
+  { file: "sbp.svg", label: "СБП" },
+  { file: "yoomoney.svg", label: "ЮMoney" },
 ];
 
 function exists(file: string): boolean {
@@ -32,7 +36,7 @@ function exists(file: string): boolean {
 }
 
 export default function PaymentMethods({ compact = false }: { compact?: boolean }) {
-  const bankLogo = exists("tbank.svg");
+  const providerLogo = exists("yookassa.svg");
   return (
     <div className={compact ? "" : "rounded-2xl border border-line bg-surface p-5"}>
       {!compact && <h2 className="font-medium">Оплата</h2>}
@@ -58,16 +62,20 @@ export default function PaymentMethods({ compact = false }: { compact?: boolean 
       <p className="mt-3 text-sm text-muted">
         Платежи проводит{" "}
         <a
-          href="https://tbank.ru"
+          href="https://yookassa.ru"
           target="_blank"
           rel="noreferrer"
           className="text-accent-ink hover:underline"
         >
-          Т-Банк
+          ЮKassa
         </a>
-        {bankLogo && (
+        {providerLogo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/logos/tbank.svg" alt="Т-Банк" className="ml-2 inline h-5 w-auto align-middle" />
+          <img
+            src="/logos/yookassa.svg"
+            alt="ЮKassa"
+            className="ml-2 inline h-5 w-auto align-middle"
+          />
         )}
       </p>
     </div>

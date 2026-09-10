@@ -90,45 +90,6 @@ function rknNoticeBlock(): string {
     : "";
 }
 
-/**
- * Кто доставляет наши письма — берётся из фактической настройки SMTP, а не
- * пишется руками. Провайдер менялся уже дважды, и каждый раз политика
- * рисковала остаться со старым получателем и старой страной: ровно такая
- * ошибка была с адресом сервера, где месяц стояла не та страна.
- */
-function mailProviderRow(): string {
-  const host = (() => {
-    try {
-      return new URL(process.env.SMTP_URL ?? "").hostname.toLowerCase();
-    } catch {
-      return "";
-    }
-  })();
-  const russian = [".ru", "timeweb", "yandex", "mail.ru", "sberbank"].some((k) =>
-    host.includes(k),
-  );
-  return russian
-    ? `| Провайдер электронной почты (хостинг-провайдер, ${host || "РФ"}) | адрес получателя и текст письма | доставка писем | РФ |`
-    : "| Провайдер электронной почты Google LLC | адрес получателя и текст письма | доставка писем | США |";
-}
-
-/** Уходит ли адрес почты за пределы России при доставке писем. */
-function mailAbroadNote(): string {
-  const host = (() => {
-    try {
-      return new URL(process.env.SMTP_URL ?? "").hostname.toLowerCase();
-    } catch {
-      return "";
-    }
-  })();
-  const russian = [".ru", "timeweb", "yandex", "mail.ru"].some((k) => host.includes(k));
-  return russian
-    ? `- при доставке писем адрес **не покидает Российскую Федерацию**: почтовый
-  сервер расположен в России;`
-    : `- провайдеру электронной почты адрес передаётся неизбежно: без адреса
-  получателя письмо невозможно доставить;`;
-}
-
 /** Подстановка реквизитов и значений в шаблонные места документа. */
 function fillTemplate(text: string, docId: LegalDocId): string {
   const company = getCompany();
@@ -143,10 +104,6 @@ function fillTemplate(text: string, docId: LegalDocId): string {
     .join(operatorBlock(company))
     .split("{{РЕКВИЗИТЫ}}")
     .join(requisitesBlock(company))
-    .split("{{ПОЧТОВЫЙ_ПРОВАЙДЕР}}")
-    .join(mailProviderRow())
-    .split("{{ПОЧТА_ЗА_РУБЕЖ}}")
-    .join(mailAbroadNote())
     .split("{{УВЕДОМЛЕНИЕ_РКН}}")
     .join(rknNoticeBlock())
     .split("{{ИСПОЛНИТЕЛЬ}}")

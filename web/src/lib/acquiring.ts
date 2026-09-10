@@ -1,203 +1,252 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-
 /**
- * Интернет-эквайринг Т-Бизнеса (Т-Касса), сценарий non-PCI: приложение зовёт
- * Init, банк отдаёт ссылку на свою платёжную форму, человек платит там,
- * банк дёргает наш вебхук. Реквизиты карты сюда не попадают.
+ * Эквайринг ЮKassa.
  *
- * Перенесено из рабочей реализации Basis (справка ~/эквайринг-тбизнес-справка.md,
- * сквозной прогон на бою 27–28.08.2026). Грабли оттуда учтены:
- *  - домен только securepay.tbank.ru, исторический tinkoff.ru мёртв по TLS;
- *  - в подписи булевы — строчными true/false, иначе подпись нотификации
- *    не сойдётся никогда;
- *  - ключи сортируются как есть: Password встаёт перед PaymentId;
- *  - SuccessURL/FailURL не передаём — иначе человек не увидит экран банка
- *    «Оплачено»; возврат идёт по адресу из настроек терминала;
- *  - к PaymentURL добавляется ?language=ru, иначе форма на английском.
- */
-
-const API_URL = () => (process.env.TBANK_API_URL ?? "https://securepay.tbank.ru/v2").replace(/\/$/, "");
-const TIMEOUT_MS = () => Number(process.env.TBANK_TIMEOUT ?? 20) * 1000;
-
-/**
- * Реквизиты из переменных окружения. `trim()` обязателен: панель хостинга
- * легко добавляет пробел или перевод строки в конец значения, и банк
- * отвечает «терминал не найден» на внешне правильный ключ.
- */
-export const terminalKey = () => (process.env.TBANK_TERMINAL_KEY ?? "").trim();
-export const terminalPassword = () => (process.env.TBANK_PASSWORD ?? "").trim();
-
-export const acquiringConfigured = () => Boolean(terminalKey() && terminalPassword());
-
-/** Демо-терминал виден по суффиксу DEMO — на витрине показываем плашку. */
-export const acquiringDemo = () => terminalKey().toUpperCase().endsWith("DEMO");
-
-/**
- * Система налогообложения для фискального чека.
+ * Переход с Т-Кассы состоялся 10.09.2026: Т-Бизнес отказал в подключении
+ * интернет-эквайринга, ЮKassa работает с этой категорией. Деньги приходят на
+ * расчётный счёт ИП в любом банке, чеки по 54-ФЗ пробивает касса ЮKassa,
+ * отдельные договоры с ОФД не нужны.
  *
- * Значение попадает в фискальный документ, поэтому оно вынесено в переменную
- * окружения, а не зашито: ошибка здесь — ошибка в чеке перед налоговой.
- * По умолчанию УСН «доходы», самый частый случай для ИП на услугах.
- * Допустимые значения Т-Кассы: osn, usn_income, usn_income_outcome,
- * envd, esn, patent.
+ * Главное отличие от Т-Кассы, из-за которого код устроен иначе: **уведомления
+ * ЮKassa не подписаны**. Проверять их можно только по адресу отправителя и,
+ * что надёжнее, перезапросом объекта через API. Поэтому здесь нет проверки
+ * подписи, зато есть правило: тело уведомления считаем лишь подсказкой, а
+ * решение принимаем по ответу API. Подделать уведомление тогда бесполезно.
+ *
+ * Документация: yookassa.ru/developers/api (проверено 10.09.2026).
  */
-export const taxationCode = () => (process.env.TBANK_TAXATION ?? "usn_income").trim();
+
+const API = "https://api.yookassa.ru/v3";
+const TIMEOUT_MS = () => Number(process.env.YOOKASSA_TIMEOUT ?? 20) * 1000;
+
+export const shopId = () => (process.env.YOOKASSA_SHOP_ID ?? "").trim();
+export const secretKey = () => (process.env.YOOKASSA_SECRET_KEY ?? "").trim();
+
+export const acquiringConfigured = () => Boolean(shopId() && secretKey());
 
 /**
- * Ставка НДС в позиции чека. На упрощёнке НДС нет — значение none.
- * Допустимые: none, vat0, vat10, vat20, vat110, vat120.
+ * Тестовый магазин. У ЮKassa это видно по ключу: боевые начинаются с `live_`,
+ * тестовые — с `test_`. Гадать не нужно, признак в самом ключе.
  */
-export const vatCode = () => (process.env.TBANK_VAT ?? "none").trim();
+export const acquiringDemo = () => secretKey().startsWith("test_");
 
 /**
- * Чек для 54-ФЗ. Продажа физлицу требует фискального документа, и банк
- * пробивает его сам, если к терминалу подключена онлайн-касса. Позиция всегда
- * одна: доступ к сервису на выбранный срок, полная предоплата.
- * Наименование ограничено 128 знаками — это ограничение кассы, не наше.
+ * Система налогообложения для чека: 1 — ОСН, 2 — УСН доходы,
+ * 3 — УСН доходы минус расходы, 4 — ЕНВД, 5 — ЕСХН, 6 — патент.
+ * Значение уходит в фискальный документ, поэтому вынесено в переменную.
  */
-function receipt(email: string, itemName: string, amountKopecks: number) {
-  return {
-    Email: email,
-    Taxation: taxationCode(),
-    Items: [
-      {
-        Name: itemName.slice(0, 128),
-        Price: amountKopecks,
-        Quantity: 1,
-        Amount: amountKopecks,
-        PaymentMethod: "full_prepayment",
-        PaymentObject: "service",
-        Tax: vatCode(),
-      },
-    ],
-  };
-}
+export const taxSystemCode = () => Number(process.env.YOOKASSA_TAX_SYSTEM ?? 2);
 
-/** Что реально приехало в переменные — без раскрытия секретов. */
+/**
+ * Ставка НДС в позиции чека: 1 — без НДС, 2 — 0%, 3 — 10%, 4 — 20%,
+ * 5 — 10/110, 6 — 20/120. На упрощёнке — без НДС.
+ */
+export const vatCode = () => Number(process.env.YOOKASSA_VAT_CODE ?? 1);
+
+/** Что реально приехало в переменные — без раскрытия секрета. */
 export function credentialsShape() {
-  const key = process.env.TBANK_TERMINAL_KEY ?? "";
-  const pass = process.env.TBANK_PASSWORD ?? "";
+  const id = shopId();
+  const key = secretKey();
   return {
-    // Начало ключа показываем целиком: у двух разных демо-терминалов и длина,
-    // и хвост DEMO совпадают, и по ним не отличить, какой из них в панели.
-    // Ключ терминала не секрет, он уходит в браузер на форме оплаты.
+    магазин: { длина: id.length, значение: id },
     ключ: {
       длина: key.length,
+      начало: key.slice(0, 5),
+      боевой: key.startsWith("live_"),
       обрезкаПробелов: key !== key.trim(),
-      начало: key.trim().slice(0, 6),
-      хвост: key.trim().slice(-4),
     },
-    пароль: {
-      длина: pass.length,
-      обрезкаПробелов: pass !== pass.trim(),
-      хвост: pass.trim().slice(-2),
-    },
+    чек: { налогообложение: taxSystemCode(), ндс: vatCode() },
   };
 }
 
-/**
- * Тело запроса к банку. Вложенные объекты допустимы: чек передаётся объектом,
- * и в подпись он не входит — makeToken пропускает всё, что не скаляр.
- */
-type Flat = Record<string, string | number | boolean | null | undefined | object>;
+/** Рубли с копейками строкой, как требует ЮKassa: «199.00». */
+const rub = (kopecks: number) => (kopecks / 100).toFixed(2);
 
-function stringify(v: string | number | boolean): string {
-  // Булевы — строчными, как в JSON: банк присылает "Success": true.
-  if (typeof v === "boolean") return v ? "true" : "false";
-  return String(v);
+function authHeader(): string {
+  return "Basic " + Buffer.from(`${shopId()}:${secretKey()}`).toString("base64");
 }
 
-/** Подпись: только корневые поля, + Password, сортировка ключей, SHA-256. */
-export function makeToken(params: Flat, password: string): string {
-  const flat: Record<string, string> = {};
-  for (const [k, v] of Object.entries(params)) {
-    if (k === "Token" || v === null || v === undefined || typeof v === "object") continue;
-    flat[k] = stringify(v as string | number | boolean);
-  }
-  flat.Password = password;
-  const raw = Object.keys(flat)
-    .sort()
-    .map((k) => flat[k])
-    .join("");
-  return createHash("sha256").update(raw, "utf8").digest("hex");
-}
-
-/** Проверка подписи нотификации за постоянное время. */
-export function verifyNotification(body: Flat): boolean {
-  const password = terminalPassword();
-  const got = String(body.Token ?? "");
-  if (!password || !got) return false;
-  const expected = makeToken(body, password);
-  const a = Buffer.from(got);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-async function call<T>(method: string, params: Flat): Promise<T> {
-  const password = terminalPassword();
-  const body = { ...params, TerminalKey: terminalKey(), Token: "" };
-  body.Token = makeToken(body, password);
-  const res = await fetch(`${API_URL()}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+async function call<T>(path: string, init?: RequestInit & { idempotenceKey?: string }): Promise<T> {
+  const headers: Record<string, string> = {
+    Authorization: authHeader(),
+    "Content-Type": "application/json",
+  };
+  if (init?.idempotenceKey) headers["Idempotence-Key"] = init.idempotenceKey;
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: { ...headers, ...(init?.headers as Record<string, string>) },
     signal: AbortSignal.timeout(TIMEOUT_MS()),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Банк ${res.status} на ${method}: ${(await res.text()).slice(0, 200)}`);
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    /* ЮKassa всегда отвечает JSON; пустой ответ разберём как null */
+  }
+  if (!res.ok) {
+    const e = (body ?? {}) as { code?: string; description?: string };
+    throw Object.assign(new Error(e.description ?? `ЮKassa ${res.status}`), {
+      code: e.code ?? String(res.status),
+    });
+  }
+  return body as T;
 }
 
-export type InitResult = {
-  Success: boolean;
-  Status?: string;
-  PaymentId?: string;
-  PaymentURL?: string;
-  ErrorCode?: string;
-  Message?: string;
-  Details?: string;
+export type PaymentResult = {
+  ok: boolean;
+  paymentId?: string;
+  confirmationUrl?: string;
+  status?: string;
+  errorCode?: string;
+  message?: string;
 };
 
-/** Создать платёж. Сумма приходит в копейках и считается ТОЛЬКО на сервере. */
+type YooPayment = {
+  id: string;
+  status: string;
+  paid: boolean;
+  amount: { value: string; currency: string };
+  confirmation?: { confirmation_url?: string };
+  metadata?: Record<string, string>;
+};
+
+/**
+ * Создать платёж. Сумма приходит в копейках и считается ТОЛЬКО на сервере.
+ * `capture: true` — деньги списываются сразу, без отдельного подтверждения.
+ */
 export async function initPayment(input: {
   orderId: string;
   amountKopecks: number;
   description: string;
   /** Наименование позиции в чеке. Если не задано — берётся описание платежа. */
   itemName?: string;
-  /** Почта покупателя: банк отправит на неё фискальный чек. */
+  /** Почта покупателя: на неё уходит фискальный чек. */
   email: string;
-  notificationUrl: string;
-}): Promise<InitResult> {
-  const r = await call<InitResult>("Init", {
-    Amount: input.amountKopecks,
-    OrderId: input.orderId,
-    Description: input.description.slice(0, 250),
-    NotificationURL: input.notificationUrl,
-    // SuccessURL/FailURL намеренно не передаём — см. комментарий сверху.
-    DATA: undefined,
-    // Вложенные объекты в подпись не входят — makeToken их пропускает.
-    Receipt: receipt(input.email, input.itemName ?? input.description, input.amountKopecks),
-  });
-  if (r.PaymentURL && !r.PaymentURL.includes("language=")) {
-    const sep = r.PaymentURL.includes("?") ? "&" : "?";
-    r.PaymentURL = `${r.PaymentURL}${sep}language=ru`;
+  returnUrl: string;
+}): Promise<PaymentResult> {
+  const amount = { value: rub(input.amountKopecks), currency: "RUB" };
+  try {
+    const p = await call<YooPayment>("/payments", {
+      method: "POST",
+      // Ключ идемпотентности — наш номер заказа: повторный запрос по той же
+      // кнопке не создаст второй платёж даже при двойном нажатии.
+      idempotenceKey: input.orderId,
+      body: JSON.stringify({
+        amount,
+        capture: true,
+        confirmation: { type: "redirect", return_url: input.returnUrl },
+        description: input.description.slice(0, 128),
+        // По метаданным находим свой заказ, когда придёт уведомление.
+        metadata: { order_id: input.orderId },
+        receipt: {
+          customer: { email: input.email },
+          tax_system_code: taxSystemCode(),
+          items: [
+            {
+              description: (input.itemName ?? input.description).slice(0, 128),
+              quantity: "1.00",
+              amount,
+              vat_code: vatCode(),
+              payment_mode: "full_prepayment",
+              payment_subject: "service",
+            },
+          ],
+        },
+      }),
+    });
+    return {
+      ok: true,
+      paymentId: p.id,
+      status: p.status,
+      confirmationUrl: p.confirmation?.confirmation_url,
+    };
+  } catch (e) {
+    const err = e as Error & { code?: string };
+    return { ok: false, errorCode: err.code, message: err.message };
   }
-  return r;
 }
 
-export type StateResult = { Success: boolean; Status?: string; ErrorCode?: string; Message?: string };
+export type PaymentState = {
+  ok: boolean;
+  status?: string;
+  paid?: boolean;
+  amountKopecks?: number;
+  orderId?: string;
+  errorCode?: string;
+  message?: string;
+};
 
-export async function getState(paymentId: string): Promise<StateResult> {
-  return call<StateResult>("GetState", { PaymentId: paymentId });
+/** Состояние платежа по данным ЮKassa — источник правды при уведомлениях. */
+export async function getPayment(paymentId: string): Promise<PaymentState> {
+  try {
+    const p = await call<YooPayment>(`/payments/${encodeURIComponent(paymentId)}`);
+    return {
+      ok: true,
+      status: p.status,
+      paid: p.paid,
+      amountKopecks: Math.round(Number(p.amount.value) * 100),
+      orderId: p.metadata?.order_id,
+    };
+  } catch (e) {
+    const err = e as Error & { code?: string };
+    return { ok: false, errorCode: err.code, message: err.message };
+  }
 }
 
-/** Деньги получены: начисляем и на AUTHORIZED (холд), и на CONFIRMED. */
+type YooRefund = { id: string; status: string; payment_id: string; amount: { value: string } };
+
+/** Состояние возврата: нужен, чтобы узнать сумму и платёж, к которому он относится. */
+export async function getRefund(refundId: string): Promise<{
+  ok: boolean;
+  status?: string;
+  paymentId?: string;
+  amountKopecks?: number;
+}> {
+  try {
+    const r = await call<YooRefund>(`/refunds/${encodeURIComponent(refundId)}`);
+    return {
+      ok: true,
+      status: r.status,
+      paymentId: r.payment_id,
+      amountKopecks: Math.round(Number(r.amount.value) * 100),
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
 /**
- * Живая проверка связи с банком: Init на рубль, в базу ничего не пишет.
- * Нужна, чтобы отличить «банк отказал» от «мы туда не ходим» до того, как
- * первый живой человек нажмёт «Оплатить».
+ * Адреса, с которых ЮKassa шлёт уведомления. Список из их документации,
+ * проверен 10.09.2026. Это первый фильтр, а не доказательство: настоящую
+ * проверку делает перезапрос объекта через API.
  */
+const NOTIFY_NETS = [
+  "185.71.76.0/27",
+  "185.71.77.0/27",
+  "77.75.153.0/25",
+  "77.75.154.128/25",
+  "77.75.156.11/32",
+  "77.75.156.35/32",
+];
+
+function inNet(ip: string, cidr: string): boolean {
+  const [net, bitsRaw] = cidr.split("/");
+  const bits = Number(bitsRaw);
+  const toInt = (a: string) =>
+    a.split(".").reduce((acc, part) => (acc << 8) + (Number(part) & 255), 0) >>> 0;
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return false;
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  return (toInt(ip) & mask) === (toInt(net) & mask);
+}
+
+/** Пришло ли уведомление с адресов ЮKassa. */
+export function fromYooKassa(ip: string): boolean {
+  const clean = ip.trim();
+  return NOTIFY_NETS.some((n) => inNet(clean, n));
+}
+
+/** Живая проверка связи: создаём платёж на рубль, в базу ничего не пишем. */
 export async function probePayments(): Promise<{
   ok: boolean;
   demo: boolean;
@@ -207,27 +256,27 @@ export async function probePayments(): Promise<{
 }> {
   const t0 = Date.now();
   if (!acquiringConfigured()) return { ok: false, demo: false, message: "реквизиты не заданы", ms: 0 };
-  try {
-    const r = await initPayment({
-      orderId: `probe-${Date.now()}`,
-      amountKopecks: 100,
-      description: "Проверка связи",
-      email: "probe@example.com",
-      notificationUrl: "https://example.invalid/probe",
-    });
-    return {
-      ok: Boolean(r.Success),
-      demo: acquiringDemo(),
-      errorCode: r.ErrorCode,
-      message: r.Message ?? r.Details,
-      ms: Date.now() - t0,
-    };
-  } catch (e) {
-    return { ok: false, demo: acquiringDemo(), message: (e as Error).message, ms: Date.now() - t0 };
-  }
+  const r = await initPayment({
+    orderId: `probe-${Date.now()}`,
+    amountKopecks: 100,
+    description: "Проверка связи",
+    email: "probe@example.com",
+    returnUrl: "https://example.com/",
+  });
+  return {
+    ok: r.ok,
+    demo: acquiringDemo(),
+    errorCode: r.errorCode,
+    message: r.message,
+    ms: Date.now() - t0,
+  };
 }
 
-export const PAID_STATUSES = new Set(["CONFIRMED", "AUTHORIZED"]);
-/** Возврат: доступ надо забрать обратно, иначе возврат станет подарком. */
-export const REFUND_STATUSES = new Set(["REFUNDED", "REVERSED", "PARTIAL_REFUNDED"]);
-export const FAILED_STATUSES = new Set(["REJECTED", "CANCELED", "DEADLINE_EXPIRED"]);
+/** Деньги получены. */
+export const PAID_STATUSES = new Set(["succeeded"]);
+/**
+ * Возврат: доступ надо забрать обратно, иначе возврат станет подарком.
+ * `refunded` — то, что пишем в свою таблицу; остальное приходит от ЮKassa.
+ */
+export const REFUND_STATUSES = new Set(["refunded", "refund.succeeded"]);
+export const FAILED_STATUSES = new Set(["canceled"]);

@@ -9,7 +9,7 @@ import {
   acquiringDemo,
   credentialsShape,
   probePayments,
-  taxationCode,
+  taxSystemCode,
   vatCode,
 } from "@/lib/acquiring";
 import { telegramConfigured } from "@/lib/telegram";
@@ -189,7 +189,7 @@ export async function GET(req: NextRequest) {
     mail: mailConfigured(),
     acquiring: acquiringConfigured() ? (acquiringDemo() ? "демо-терминал" : "боевой терминал") : false,
     // Попадает в фискальный чек — проверяется глазами, а не угадывается.
-    чек: { налогообложение: taxationCode(), ндс: vatCode() },
+    чек: { налогообложение: taxSystemCode(), ндс: vatCode() },
     // Куда падают обращения из поддержки. Пусто — значит никуда.
     поддержка: supportInbox() || "НЕ ЗАДАНА",
     payments,

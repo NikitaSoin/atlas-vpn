@@ -73,30 +73,34 @@ export async function POST(req: NextRequest) {
         // в чеке нужна услуга, а не рекламная строка.
         itemName: `Доступ к сервису ${brand.name}, ${plan.title.toLowerCase()}`,
         email,
-        notificationUrl: absoluteUrl(req, "/api/payments/notification").toString(),
+        // Куда ЮKassa вернёт человека после оплаты. Адрес уведомлений задаётся
+        // не здесь, а один раз в личном кабинете ЮKassa — в отличие от Т-Кассы,
+        // где он передавался с каждым платежом.
+        returnUrl: absoluteUrl(req, "/account?paid=1").toString(),
       });
-      if (!r.Success || !r.PaymentURL) {
-        await store.updatePayment(orderId, { status: `INIT_FAILED_${r.ErrorCode ?? "?"}` });
-        console.error("[оплата] Init отклонён:", r.ErrorCode, r.Message, r.Details);
+      if (!r.ok || !r.confirmationUrl) {
+        await store.updatePayment(orderId, { status: `INIT_FAILED_${r.errorCode ?? "?"}` });
+        console.error("[оплата] платёж не создан:", r.errorCode, r.message);
         await track(req.headers, "checkout_init_failed");
-        // 501 «терминал не найден» — проблема настройки, а не денег клиента:
-        // человеку про «попробуйте ещё раз» писать нечестно.
-        const kind = r.ErrorCode === "501" ? "terminal" : "bank";
+        // Неверные реквизиты магазина — наша проблема настройки, а не денег
+        // клиента: писать ему «попробуйте ещё раз» нечестно.
+        const kind =
+          r.errorCode === "invalid_credentials" || r.errorCode === "401" ? "terminal" : "bank";
         return NextResponse.redirect(
           absoluteUrl(req, `/checkout?plan=${plan.id}&err=${kind}`),
           { status: 303 },
         );
       }
       await store.updatePayment(orderId, {
-        paymentId: r.PaymentId ?? null,
-        status: r.Status ?? "NEW",
-        paymentUrl: r.PaymentURL,
+        paymentId: r.paymentId ?? null,
+        status: r.status ?? "pending",
+        paymentUrl: r.confirmationUrl,
       });
       // В лог — номер заказа и сумма, без персональных данных: почту к
       // заказу всегда можно поднять из базы.
-      console.log(`[оплата] заказ ${orderId}: ${amount} коп., статус ${r.Status}`);
+      console.log(`[оплата] заказ ${orderId}: ${amount} коп., статус ${r.status}`);
       await track(req.headers, event);
-      return NextResponse.redirect(r.PaymentURL, { status: 303 });
+      return NextResponse.redirect(r.confirmationUrl, { status: 303 });
     } catch (e) {
       await store.updatePayment(orderId, { status: "INIT_ERROR" });
       console.error("[оплата]", (e as Error).message);
