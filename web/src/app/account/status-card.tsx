@@ -30,7 +30,7 @@ export default function StatusCard({ sub }: { sub: SubRecord }) {
         : "bg-bad";
 
   const badge = preparing
-    ? "Готовим доступ"
+    ? "Готовим VPN-доступ"
     : state === "trial"
       ? "Пробный доступ"
       : state === "active"
@@ -56,7 +56,7 @@ export default function StatusCard({ sub }: { sub: SubRecord }) {
     : state === "trial"
       ? `Лимит — ${TRIAL_TRAFFIC_GB} ГБ на весь пробный период. Доступ до ${formatDate(sub.expiresAt)}`
       : state === "active"
-        ? "Продление прибавит срок к оставшимся дням. Настраивать заново ничего не нужно."
+        ? "Продление прибавит срок к оставшимся дням. Настраивать VPN заново не нужно."
         : state === "grace"
           ? "Доступ пока работает. Продлите подписку, чтобы соединение не прервалось."
           : "После оплаты останутся прежние ссылка и настройки.";
