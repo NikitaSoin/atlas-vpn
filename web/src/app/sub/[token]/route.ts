@@ -3,7 +3,7 @@ import { getPanel } from "@/lib/panel";
 import { getStore } from "@/lib/db";
 import { siteUrl } from "@/lib/site";
 import { brand } from "@/lib/brand";
-import { incyRoutingHeader } from "@/lib/incy";
+import { incyAutoroutingHeader } from "@/lib/incy";
 
 /**
  * Подписка на нашем домене.
@@ -47,7 +47,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
     h.set("profile-title", `base64:${Buffer.from(brand.name, "utf8").toString("base64")}`);
     // Маршрутизацию и DNS задаём мы, а не настройки на устройстве: иначе
     // включённый VPN у части людей выглядит как «интернет пропал».
-    h.set("routing", incyRoutingHeader());
+    // Правила маршрутизации приложение забирает по ссылке и обновляет само:
+    // список сайтов правится у нас, без перевыпуска подписок.
+    h.set("autorouting", incyAutoroutingHeader());
     h.set("cache-control", "no-store");
     return h;
   };
