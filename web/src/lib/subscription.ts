@@ -211,6 +211,94 @@ export async function applyPayment(
 }
 
 /**
+ * Бесплатный доступ без срока и лимита — для своих.
+ *
+ * Нужен, чтобы самим проверять сервис на живых устройствах и выдавать доступ
+ * близким. Прав на управление сервисом он не даёт: это обычная подписка, у
+ * которой снят срок и снят лимит трафика.
+ *
+ * Дата поставлена далёкая, а не «бесконечная»: во всей системе срок — это
+ * дата, и заводить ради одного случая второй тип значения значит трогать
+ * каждую проверку срока. Панель при этом показывает клиенту «без ограничения».
+ *
+ * Искусственного ограничения скорости у нас нет ни у кого, снимать нечего.
+ */
+const UNLIMITED_UNTIL = new Date("2099-12-31T00:00:00.000Z");
+
+export async function grantUnlimited(email: string): Promise<SubRecord | null> {
+  const store = getStore();
+  const sub = await store.findSubByEmail(email.trim().toLowerCase());
+  if (!sub) return null;
+  const updated = await store.updateSub(sub.token, {
+    planId: "unlimited",
+    months: 0,
+    autoRenew: false,
+    expiresAt: UNLIMITED_UNTIL,
+    isTrial: false,
+  });
+  if (!updated) return null;
+  return updated.panelToken ? syncPanel(updated, 0) : provisionPanel(updated);
+}
+
+/**
+ * Снять бесплатный доступ. Срок ставим текущим моментом: доступ прекращается,
+ * а история аккаунта остаётся. Если человек потом заплатит, оплата прибавит
+ * срок к этому моменту, а не к 2099 году.
+ */
+export async function revokeUnlimited(email: string): Promise<SubRecord | null> {
+  const store = getStore();
+  const sub = await store.findSubByEmail(email.trim().toLowerCase());
+  if (!sub || sub.planId !== "unlimited") return null;
+  const updated = await store.updateSub(sub.token, {
+    planId: "none",
+    expiresAt: new Date(),
+    isTrial: false,
+  });
+  return updated ? syncPanel(updated, 0) : null;
+}
+
+/**
+ * Промокод: прибавить дни к сроку.
+ *
+ * Дни прибавляются к остатку, а не заменяют его: человек, у которого ещё есть
+ * оплаченный месяц, не должен терять его, применив код на неделю.
+ *
+ * Лимит трафика снимаем: неделя по промокоду — это полный доступ, а не второй
+ * пробный период. Иначе человек упрётся в десять гигабайт и решит, что мы
+ * обманули.
+ */
+export async function applyPromoDays(email: string, days: number): Promise<SubRecord | null> {
+  const store = getStore();
+  const sub = await store.findSubByEmail(email.trim().toLowerCase());
+  if (!sub) return null;
+  const now = new Date();
+  const base = sub.expiresAt > now ? sub.expiresAt : now;
+  const updated = await store.updateSub(sub.token, {
+    planId: sub.planId === "none" || sub.isTrial ? "promo" : sub.planId,
+    expiresAt: addDays(base, days),
+    isTrial: false,
+  });
+  if (!updated) return null;
+  return updated.panelToken ? syncPanel(updated, 0) : provisionPanel(updated);
+}
+
+/** Отправить в панель срок и лимит из базы. База — источник правды по датам. */
+async function syncPanel(sub: SubRecord, trafficLimitBytes: number): Promise<SubRecord> {
+  if (!sub.panelToken) return sub;
+  try {
+    await getPanel().updateSubscription(
+      sub.panelToken,
+      { expiresAt: panelExpiry(sub.expiresAt, sub.isTrial), trafficLimitBytes },
+      sub.panelUserId,
+    );
+  } catch (e) {
+    console.error("[доступ] панель не обновилась:", (e as Error).message);
+  }
+  return sub;
+}
+
+
+/**
  * Возврат денег: снимаем ровно тот срок, который дала возвращённая оплата.
  *
  * Раньше здесь срок обнулялся целиком, и вместе с возвращённым месяцем сгорал

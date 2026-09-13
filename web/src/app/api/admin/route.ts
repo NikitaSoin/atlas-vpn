@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { absoluteUrl } from "@/lib/site";
 import { ADMIN_COOKIE, isAdmin, sameCode } from "@/lib/admin";
 import { getStore } from "@/lib/db";
+import { grantUnlimited, revokeUnlimited } from "@/lib/subscription";
 
 /**
  * Действия админки одним роутом: вход, ответ в обращении, смена статуса.
@@ -28,6 +29,42 @@ export async function POST(req: NextRequest) {
 
   if (!(await isAdmin())) {
     return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+  }
+
+  /*
+    Бесплатный доступ для своих. Отдельным действием, а не правкой базы руками:
+    выдача должна снимать лимит и в панели, иначе человек упрётся в пробные
+    десять гигабайт и не поймёт почему.
+  */
+  if (action === "grant_unlimited" || action === "revoke_unlimited") {
+    const email = String(form.get("email") ?? "").trim().toLowerCase();
+    const done =
+      action === "grant_unlimited" ? await grantUnlimited(email) : await revokeUnlimited(email);
+    return NextResponse.redirect(
+      absoluteUrl(req, `/admin?${done ? "ok" : "err"}=${encodeURIComponent(email)}`),
+      { status: 303 },
+    );
+  }
+
+  /*
+    Создание промокода. Если код не задан — генерируем сами: люди придумывают
+    предсказуемые коды, а предсказуемый код подбирается перебором.
+  */
+  if (action === "create_promo") {
+    const days = Math.max(1, Math.min(365, Number(form.get("days") ?? 7)));
+    const uses = Math.max(1, Math.min(10000, Number(form.get("uses") ?? 1)));
+    const custom = String(form.get("code") ?? "").replace(/\s+/g, "").toUpperCase();
+    const code =
+      custom ||
+      "IREK" +
+        Array.from(crypto.getRandomValues(new Uint8Array(4)))
+          .map((b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32])
+          .join("");
+    const ok = await getStore().createPromo(code, days, uses, null);
+    return NextResponse.redirect(
+      absoluteUrl(req, `/admin?${ok ? "promo" : "promoerr"}=${encodeURIComponent(code)}`),
+      { status: 303 },
+    );
   }
 
   const store = getStore();

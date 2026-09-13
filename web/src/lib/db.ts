@@ -215,6 +215,19 @@ export interface Store {
    * нажатия кнопки.
    */
   setSetupDone(token: string, done: boolean): Promise<void>;
+  /** Завести промокод. Возвращает false, если такой код уже есть. */
+  createPromo(code: string, days: number, uses: number, expiresAt: Date | null): Promise<boolean>;
+  /**
+   * Погасить промокод для аккаунта. Возвращает число дней или null, если код
+   * не найден, просрочен, исчерпан или уже применялся этим аккаунтом.
+   *
+   * Списание и отметка об использовании идут одним запросом с условием:
+   * два одновременных нажатия не потратят код дважды.
+   */
+  usePromo(code: string, email: string): Promise<number | null>;
+  listPromos(): Promise<
+    { code: string; days: number; usesLeft: number; expiresAt: Date | null }[]
+  >;
   createTicket(email: string, body: string): Promise<Ticket>;
   getTicketByToken(token: string): Promise<Ticket | null>;
   getTicketById(id: number): Promise<Ticket | null>;
@@ -307,6 +320,23 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS two_factor BOOLEAN NOT NULL D
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sub_cache TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sub_cache_at TIMESTAMPTZ;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS setup_done BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Промокоды. Срок даётся в днях, число применений ограничено, а повторное
+-- применение тем же аккаунтом закрыто отдельной таблицей: иначе один код
+-- продлевал бы подписку бесконечно.
+CREATE TABLE IF NOT EXISTS promo_codes (
+  code TEXT PRIMARY KEY,
+  days INTEGER NOT NULL,
+  uses_left INTEGER NOT NULL,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS promo_uses (
+  code TEXT NOT NULL,
+  email TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (code, email)
+);
 CREATE TABLE IF NOT EXISTS tickets (
   id          SERIAL PRIMARY KEY,
   token       TEXT UNIQUE NOT NULL,
@@ -781,6 +811,48 @@ class PgStore implements Store {
     await this.q("UPDATE subscriptions SET setup_done = $2 WHERE token = $1", [token, done]);
   }
 
+  async createPromo(code: string, days: number, uses: number, expiresAt: Date | null) {
+    const { rows } = await this.q(
+      `INSERT INTO promo_codes (code, days, uses_left, expires_at) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (code) DO NOTHING RETURNING code`,
+      [code, days, uses, expiresAt],
+    );
+    return rows.length > 0;
+  }
+
+  async usePromo(code: string, email: string) {
+    // Отметку об использовании ставим первой: она же и защита от повтора.
+    const mark = await this.q(
+      "INSERT INTO promo_uses (code, email) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING email",
+      [code, email],
+    );
+    if (mark.rows.length === 0) return null;
+    const { rows } = await this.q(
+      `UPDATE promo_codes SET uses_left = uses_left - 1
+        WHERE code = $1 AND uses_left > 0 AND (expires_at IS NULL OR expires_at > now())
+        RETURNING days`,
+      [code],
+    );
+    if (rows.length === 0) {
+      // Код не подошёл — снимаем отметку, иначе аккаунт больше не сможет его применить.
+      await this.q("DELETE FROM promo_uses WHERE code = $1 AND email = $2", [code, email]);
+      return null;
+    }
+    return Number(rows[0].days);
+  }
+
+  async listPromos() {
+    const { rows } = await this.q(
+      "SELECT code, days, uses_left, expires_at FROM promo_codes ORDER BY created_at DESC LIMIT 50",
+    );
+    return rows.map((r) => ({
+      code: r.code as string,
+      days: Number(r.days),
+      usesLeft: Number(r.uses_left),
+      expiresAt: (r.expires_at as Date | null) ?? null,
+    }));
+  }
+
   async setTwoFactor(token: string, enabled: boolean) {
     await this.q("UPDATE subscriptions SET two_factor = $2 WHERE token = $1", [token, enabled]);
   }
@@ -1043,6 +1115,25 @@ class MemoryStore implements Store {
   async setSetupDone(token: string, done: boolean) {
     const sub = this.subs.find((s) => s.token === token);
     if (sub) sub.setupDone = done;
+  }
+  private promos = new Map<string, { days: number; usesLeft: number; expiresAt: Date | null }>();
+  private promoUses = new Set<string>();
+  async createPromo(code: string, days: number, uses: number, expiresAt: Date | null) {
+    if (this.promos.has(code)) return false;
+    this.promos.set(code, { days, usesLeft: uses, expiresAt });
+    return true;
+  }
+  async usePromo(code: string, email: string) {
+    const p = this.promos.get(code);
+    const key = `${code}:${email}`;
+    if (!p || p.usesLeft <= 0 || this.promoUses.has(key)) return null;
+    if (p.expiresAt && p.expiresAt <= new Date()) return null;
+    p.usesLeft -= 1;
+    this.promoUses.add(key);
+    return p.days;
+  }
+  async listPromos() {
+    return [...this.promos.entries()].map(([code, p]) => ({ code, ...p }));
   }
   async setTwoFactor(token: string, enabled: boolean) {
     const sub = this.subs.find((s) => s.token === token);

@@ -74,11 +74,12 @@ export default async function AdminPage({
   }
 
   const store = getStore();
-  const [tickets, stats7, stats1, subs] = await Promise.all([
+  const [tickets, stats7, stats1, subs, promos] = await Promise.all([
     store.listTickets(),
     store.eventStats(7),
     store.eventStats(1),
     store.listSubs(100),
+    store.listPromos(),
   ]);
   const byState = new Map<string, number>();
   for (const s of subs) {

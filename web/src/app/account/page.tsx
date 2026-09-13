@@ -77,11 +77,11 @@ function ChooseAccess({
 export default async function AccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string; err?: string; paid?: string }>;
+  searchParams: Promise<{ new?: string; err?: string; paid?: string; promo?: string }>;
 }) {
   const sub = await currentSub();
   if (!sub) redirect("/start?mode=login");
-  const { err, paid } = await searchParams;
+  const { err, paid, promo } = await searchParams;
   // Банк возвращает человека на главную без номера заказа — смотрим сами,
   // чем закончился его последний платёж.
   const lastPay = await getStore().lastPayment(sub.email);
