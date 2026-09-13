@@ -130,10 +130,43 @@ export type EventRecord = {
   ref: string;
 };
 
+/** Сводка по клиентам для админки — по всей базе, а не по последним строкам. */
+export type SubStats = {
+  total: number;
+  /** Аккаунт есть, доступ не выбирали. */
+  none: number;
+  /** Бесплатные для своих. */
+  free: number;
+  /** Пробный период идёт прямо сейчас. */
+  trial: number;
+  /** Платная подписка действует прямо сейчас. */
+  paid: number;
+  /** Доступ был и закончился (пробный или платный). */
+  expired: number;
+  /** Аккаунтов создано за последние 7 дней. */
+  newWeek: number;
+};
+
+/** В какую корзину сводки попадает аккаунт. Общая логика для обоих хранилищ. */
+export function subBucket(
+  sub: SubRecord,
+  now: Date,
+): "none" | "free" | "trial" | "paid" | "expired" {
+  if (sub.planId === "none") return "none";
+  if (sub.expiresAt <= now) return "expired";
+  if (sub.planId === "unlimited") return "free";
+  return sub.isTrial ? "trial" : "paid";
+}
+
 export interface Store {
   addEvent(e: EventRecord): Promise<void>;
-  /** Счётчики событий за последние N дней, по убыванию. */
-  eventStats(days: number): Promise<{ event: string; count: number }[]>;
+  /**
+   * Счётчики событий за последние N дней, по убыванию. `unique` — считать
+   * людей (по отпечатку адреса), а не действия: один человек, десять раз
+   * открывший сайт, даёт единицу.
+   */
+  eventStats(days: number, unique?: boolean): Promise<{ event: string; count: number }[]>;
+  subStats(): Promise<SubStats>;
   findSubByEmail(email: string): Promise<SubRecord | null>;
   findSubByToken(token: string): Promise<SubRecord | null>;
   findSubByTelegram(chatId: string): Promise<SubRecord | null>;
@@ -550,14 +583,40 @@ class PgStore implements Store {
     );
   }
 
-  async eventStats(days: number) {
+  async eventStats(days: number, unique = false) {
+    // Пустой отпечаток (адрес не определён) в уникальных не считаем.
+    const measure = unique ? "COUNT(DISTINCT NULLIF(ip, ''))" : "COUNT(*)";
     const { rows } = await this.q(
-      `SELECT event, COUNT(*)::int AS count FROM events
+      `SELECT event, ${measure}::int AS count FROM events
        WHERE created_at > now() - ($1 || ' days')::interval
        GROUP BY event ORDER BY count DESC`,
       [days],
     );
     return rows.map((r) => ({ event: r.event as string, count: r.count as number }));
+  }
+
+  async subStats() {
+    const { rows } = await this.q(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE plan_id = 'none')::int AS none,
+              COUNT(*) FILTER (WHERE plan_id <> 'none' AND expires_at <= now())::int AS expired,
+              COUNT(*) FILTER (WHERE plan_id = 'unlimited' AND expires_at > now())::int AS free,
+              COUNT(*) FILTER (WHERE plan_id NOT IN ('none', 'unlimited') AND is_trial AND expires_at > now())::int AS trial,
+              COUNT(*) FILTER (WHERE plan_id NOT IN ('none', 'unlimited') AND NOT is_trial AND expires_at > now())::int AS paid,
+              COUNT(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS new_week
+         FROM subscriptions`,
+    );
+    const r = rows[0] ?? {};
+    const n = (v: unknown) => Number(v ?? 0);
+    return {
+      total: n(r.total),
+      none: n(r.none),
+      expired: n(r.expired),
+      free: n(r.free),
+      trial: n(r.trial),
+      paid: n(r.paid),
+      newWeek: n(r.new_week),
+    };
   }
 
   async findSubByEmail(email: string) {
@@ -1060,16 +1119,35 @@ class MemoryStore implements Store {
     if (this.events.length > 5000) this.events.shift();
   }
 
-  async eventStats(days: number) {
+  async eventStats(days: number, unique = false) {
     const since = Date.now() - days * 86400_000;
     const counts = new Map<string, number>();
+    const seen = new Map<string, Set<string>>();
     for (const e of this.events) {
       if (e.createdAt.getTime() < since) continue;
+      if (unique) {
+        if (!e.ip) continue;
+        const ips = seen.get(e.event) ?? new Set<string>();
+        if (ips.has(e.ip)) continue;
+        ips.add(e.ip);
+        seen.set(e.event, ips);
+      }
       counts.set(e.event, (counts.get(e.event) ?? 0) + 1);
     }
     return [...counts.entries()]
       .map(([event, count]) => ({ event, count }))
       .sort((a, b) => b.count - a.count);
+  }
+
+  async subStats() {
+    const now = new Date();
+    const stats: SubStats = { total: 0, none: 0, free: 0, trial: 0, paid: 0, expired: 0, newWeek: 0 };
+    for (const sub of this.subs) {
+      stats.total++;
+      stats[subBucket(sub, now)]++;
+      if (sub.createdAt.getTime() > now.getTime() - 7 * 86400_000) stats.newWeek++;
+    }
+    return stats;
   }
 
   async findSubByEmail(email: string) {

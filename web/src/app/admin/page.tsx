@@ -51,9 +51,13 @@ export default async function AdminPage({
     fail?: string;
     promo?: string;
     promoerr?: string;
+    mode?: string;
   }>;
 }) {
-  const { err, ok, fail, promo, promoerr } = await searchParams;
+  const { err, ok, fail, promo, promoerr, mode } = await searchParams;
+  // Два взгляда на одну статистику: сколько людей и сколько действий.
+  // Один человек, десять раз открывший сайт, — десять действий и один человек.
+  const unique = mode === "unique";
 
   if (!adminConfigured()) {
     return (
@@ -99,19 +103,16 @@ export default async function AdminPage({
   }
 
   const store = getStore();
-  const [tickets, stats7, stats1, subs, promos] = await Promise.all([
+  const [tickets, stats7, stats1, subs, promos, clients] = await Promise.all([
     store.listTickets(),
-    store.eventStats(7),
-    store.eventStats(1),
+    store.eventStats(7, unique),
+    store.eventStats(1, unique),
     store.listSubs(200),
     store.listPromos(),
+    store.subStats(),
   ]);
   const now = new Date();
-  const byState = new Map<string, number>();
-  for (const s of subs) {
-    const st = subState(s);
-    byState.set(st, (byState.get(st) ?? 0) + 1);
-  }
+  const active = clients.paid + clients.trial + clients.free;
   const open = tickets.filter((t) => t.status === "open");
   const today = new Map(stats1.map((s) => [s.event, s.count]));
   const byEvent = new Map(stats7.map((s) => [s.event, s.count]));
@@ -121,13 +122,62 @@ export default async function AdminPage({
     return { ...step, count, share: funnelTop > 0 ? Math.round((count / funnelTop) * 100) : 0 };
   });
 
+  const tiles: { label: string; value: number; hint?: string }[] = [
+    {
+      label: "Активных сейчас",
+      value: active,
+      hint: `платных ${clients.paid} · пробных ${clients.trial} · бесплатных ${clients.free}`,
+    },
+    { label: "Истёк доступ", value: clients.expired, hint: "пробный или платный закончился" },
+    { label: "Только аккаунт", value: clients.none, hint: "доступ ещё не выбирали" },
+    { label: "Всего аккаунтов", value: clients.total, hint: `новых за 7 дней: ${clients.newWeek}` },
+  ];
+
+  const modeSwitch = (
+    <span className="text-sm font-normal text-muted">
+      {" · "}
+      {unique ? (
+        <>
+          <b className="text-fg">уникальные люди</b> ·{" "}
+          <Link href="/admin" className="underline hover:text-fg">
+            все действия
+          </Link>
+        </>
+      ) : (
+        <>
+          <Link href="/admin?mode=unique" className="underline hover:text-fg">
+            уникальные люди
+          </Link>{" "}
+          · <b className="text-fg">все действия</b>
+        </>
+      )}
+    </span>
+  );
+
   return (
     <main className="mx-auto max-w-3xl px-5 py-16">
       <h1 className="text-2xl font-semibold tracking-tight">Панель</h1>
 
+      {/*
+        Клиенты считаются по всей базе одним запросом, а не по последним
+        двумстам строкам списка ниже. «Активный» — у человека есть доступ
+        прямо сейчас: срок не вышел, неважно, платный он, пробный или
+        бесплатный для своих.
+      */}
+      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="rounded-2xl border border-line bg-surface p-4">
+            <p className="text-xs text-muted">{t.label}</p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight">{t.value}</p>
+            {t.hint && <p className="mt-1 text-xs text-muted">{t.hint}</p>}
+          </div>
+        ))}
+      </section>
+
       <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
         <h2 className="font-medium">
           Воронка <span className="text-sm text-muted">· за 7 дней, боты отфильтрованы</span>
+          {modeSwitch}
         </h2>
         <div className="mt-3 space-y-1.5">
           {funnel.map((step) => (
@@ -145,14 +195,19 @@ export default async function AdminPage({
           ))}
         </div>
         <p className="mt-3 text-xs text-muted">
-          Доли считаются от числа открытий сайта. Один человек может дать несколько
-          событий, поэтому это воронка по действиям, а не по уникальным людям.
+          {unique
+            ? "Доли считаются от числа уникальных посетителей: один человек на шаге даёт единицу, сколько бы раз он его ни повторил. Человек различается по обезличенному отпечатку адреса."
+            : "Доли считаются от числа открытий сайта. Один человек может дать несколько событий, поэтому это воронка по действиям, а не по уникальным людям."}
         </p>
       </section>
 
       <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
         <h2 className="font-medium">
-          Все события <span className="text-sm text-muted">· живые люди, боты отфильтрованы</span>
+          Все события{" "}
+          <span className="text-sm text-muted">
+            · {unique ? "уникальных людей" : "действий"}, боты отфильтрованы
+          </span>
+          {modeSwitch}
         </h2>
         {stats7.length === 0 ? (
           <p className="mt-2 text-sm text-muted">Событий пока нет.</p>
@@ -182,9 +237,7 @@ export default async function AdminPage({
         <h2 className="font-medium">
           Подписки{" "}
           <span className="text-sm text-muted">
-            · пробных: {byState.get("trial") ?? 0} · платных: {byState.get("active") ?? 0} ·
-            истекших: {(byState.get("grace") ?? 0) + (byState.get("expired") ?? 0)} ·
-            бесплатных: {subs.filter((s) => s.planId === "unlimited").length}
+            · последние {subs.length} из {clients.total}
           </span>
         </h2>
         {/*
