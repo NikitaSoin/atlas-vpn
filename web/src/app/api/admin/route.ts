@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const done =
       action === "grant_unlimited" ? await grantUnlimited(email) : await revokeUnlimited(email);
     return NextResponse.redirect(
-      absoluteUrl(req, `/admin?${done ? "ok" : "err"}=${encodeURIComponent(email)}`),
+      absoluteUrl(req, `/admin?${done ? "ok" : "fail"}=${encodeURIComponent(email)}`),
       { status: 303 },
     );
   }
@@ -51,16 +51,24 @@ export async function POST(req: NextRequest) {
     предсказуемые коды, а предсказуемый код подбирается перебором.
   */
   if (action === "create_promo") {
-    const days = Math.max(1, Math.min(365, Number(form.get("days") ?? 7)));
-    const uses = Math.max(1, Math.min(10000, Number(form.get("uses") ?? 1)));
-    const custom = String(form.get("code") ?? "").replace(/\s+/g, "").toUpperCase();
+    // Своё число дней важнее выбора из списка, если оно заполнено.
+    const custom = Number(form.get("days_custom") ?? 0);
+    const chosen = custom > 0 ? custom : Number(form.get("days") ?? 7);
+    const days = Math.max(1, Math.min(365, Math.round(chosen) || 7));
+    const uses = Math.max(1, Math.min(10000, Math.round(Number(form.get("uses") ?? 1)) || 1));
+    // Дата «до» — включительно, по московскому времени.
+    const expiresRaw = String(form.get("expires") ?? "").trim();
+    const expiresAt = /^\d{4}-\d{2}-\d{2}$/.test(expiresRaw)
+      ? new Date(`${expiresRaw}T23:59:59+03:00`)
+      : null;
+    const wanted = String(form.get("code") ?? "").replace(/\s+/g, "").toUpperCase().slice(0, 32);
     const code =
-      custom ||
+      wanted ||
       "IREK" +
         Array.from(crypto.getRandomValues(new Uint8Array(4)))
           .map((b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32])
           .join("");
-    const ok = await getStore().createPromo(code, days, uses, null);
+    const ok = await getStore().createPromo(code, days, uses, expiresAt);
     return NextResponse.redirect(
       absoluteUrl(req, `/admin?${ok ? "promo" : "promoerr"}=${encodeURIComponent(code)}`),
       { status: 303 },

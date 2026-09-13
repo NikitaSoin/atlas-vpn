@@ -4,12 +4,19 @@ import { brand } from "@/lib/brand";
 import { plans } from "@/lib/plans";
 import { currentSub } from "@/lib/session";
 import { getStore } from "@/lib/db";
-import { formatDate, paidRecently, subState } from "@/lib/subscription";
+import {
+  formatDate,
+  paidRecently,
+  REFERRAL_BONUS_DAYS,
+  referralLink,
+  subState,
+} from "@/lib/subscription";
 import { REFUND_STATUSES } from "@/lib/acquiring";
 import SetupSection from "../setup/setup-section";
 import TrialOffer from "../trial-offer";
 import PlanPicker from "../plans/plan-picker";
 import StatusCard from "./status-card";
+import CopyField from "./copy-field";
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +42,76 @@ function Head({ email, title }: { email: string; title: string }) {
   );
 }
 
+/**
+ * Промокод. Причину отказа не уточняем — один ответ на «не найден»,
+ * «исчерпан», «просрочен» и «уже применяли», иначе форма превращается в
+ * способ перебирать чужие коды. После неудачи блок остаётся раскрытым.
+ */
+function PromoForm({ result }: { result?: string }) {
+  return (
+    <details className="rounded-2xl border border-line bg-surface p-5" open={result === "bad"}>
+      <summary className="cursor-pointer font-medium">Есть промокод?</summary>
+      {result === "bad" && (
+        <p className="mt-2 text-sm text-bad">
+          Код не подошёл. Проверьте написание — возможно, он уже использован или
+          его срок закончился.
+        </p>
+      )}
+      <form action="/api/promo" method="POST" className="mt-3 flex flex-wrap gap-2">
+        <input
+          name="code"
+          required
+          autoComplete="off"
+          placeholder="Промокод"
+          className="min-w-0 flex-1 rounded-xl border border-line bg-ink px-4 py-2.5 uppercase outline-none focus:border-accent"
+        />
+        <button
+          type="submit"
+          className="rounded-xl bg-primary px-4 py-2.5 font-medium text-white transition hover:brightness-110"
+        >
+          Применить
+        </button>
+      </form>
+    </details>
+  );
+}
+
+/** Реферальная программа: ссылка, условия, сколько уже пришло и начислено. */
+function ReferralCard({
+  link,
+  stats,
+}: {
+  link: string;
+  stats: { invited: number; paid: number; bonusDays: number };
+}) {
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-5">
+      <h3 className="font-medium">Пригласите друга</h3>
+      <p className="mt-1.5 text-sm leading-relaxed text-muted">
+        Когда друг по вашей ссылке оплатит первую подписку, вам добавятся дни бесплатно:
+        месяц — {REFERRAL_BONUS_DAYS.m1} дней, полгода — {REFERRAL_BONUS_DAYS.m6}, год —{" "}
+        {REFERRAL_BONUS_DAYS.m12}. Дни прибавляются к вашему сроку.
+      </p>
+      <CopyField value={link} />
+      <p className="mt-2 text-xs text-muted">
+        Перешли по ссылке: {stats.invited} · оплатили: {stats.paid} · начислено вам:{" "}
+        {stats.bonusDays} дн.
+      </p>
+    </section>
+  );
+}
+
 /** Аккаунт есть, доступ ещё не выбран: пробный период или срок. */
 function ChooseAccess({
   email,
   trialUsed,
   err,
+  promo,
 }: {
   email: string;
   trialUsed: boolean;
   err?: string;
+  promo?: string;
 }) {
   return (
     <main className="mx-auto max-w-4xl px-5 py-16">
@@ -63,6 +131,9 @@ function ChooseAccess({
       </h2>
       <div className="mt-4">
         <PlanPicker email={email} />
+      </div>
+      <div className="mt-8">
+        <PromoForm result={promo} />
       </div>
     </main>
   );
@@ -110,9 +181,12 @@ export default async function AccountPage({
     return (
       <>
         {refundNotice}
-        <ChooseAccess email={sub.email} trialUsed={sub.trialUsed} err={err} />
+        <ChooseAccess email={sub.email} trialUsed={sub.trialUsed} err={err} promo={promo} />
       </>
     );
+
+  const refLink = referralLink(sub);
+  const refStats = await getStore().referralStats(sub.token);
 
   const planTitle = sub.isTrial
     ? "Пробный доступ"
@@ -130,6 +204,15 @@ export default async function AccountPage({
           <p className="mt-1 text-fg/80">
             {planTitle} · настройки остаются прежними. Доступ до{" "}
             {formatDate(sub.expiresAt)}
+          </p>
+        </div>
+      )}
+
+      {promo === "ok" && (
+        <div className="mt-6 rounded-2xl border border-good/40 bg-good/10 p-4 text-sm">
+          <p className="font-medium text-good">Промокод применён</p>
+          <p className="mt-1 text-fg/80">
+            Дни прибавлены к вашему сроку. Доступ до {formatDate(sub.expiresAt)}
           </p>
         </div>
       )}
@@ -185,6 +268,10 @@ export default async function AccountPage({
 
         <aside className={`space-y-6 ${sub.setupDone ? "order-1 lg:order-none" : ""}`}>
           <StatusCard sub={sub} />
+
+          <PromoForm result={promo} />
+
+          {refLink && <ReferralCard link={refLink} stats={refStats} />}
 
           <section className="rounded-2xl border border-line bg-surface p-5">
             <h3 className="font-medium">Помощь с подключением</h3>

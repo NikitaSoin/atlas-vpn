@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStore } from "@/lib/db";
 import { findPlan } from "@/lib/plans";
-import { applyPayment, revokePayment } from "@/lib/subscription";
-import { notify } from "@/lib/notify";
+import {
+  applyPayment,
+  grantReferralBonus,
+  revokePayment,
+  revokeReferralBonus,
+} from "@/lib/subscription";
+import { notify, notifyReferralBonus } from "@/lib/notify";
 import { track } from "@/lib/analytics";
 import { fromYooKassa, getPayment, getRefund } from "@/lib/acquiring";
 
@@ -71,6 +76,13 @@ export async function POST(req: NextRequest) {
         const sub = await applyPayment(payment.email, plan, payment.autoRenew);
         await track(req.headers, "payment_granted");
         notify(sub, "paid").catch(() => {});
+        // Реферальный бонус — внутри той же ветки, что и начисление: сюда
+        // повторная нотификация не попадает, а ключ по заказу страхует ещё раз.
+        const bonus = await grantReferralBonus(payment, sub);
+        if (bonus) {
+          await track(req.headers, "referral_bonus");
+          notifyReferralBonus(bonus.inviter, bonus.days).catch(() => {});
+        }
       }
     }
     return new Response("OK");
@@ -93,6 +105,8 @@ export async function POST(req: NextRequest) {
       const sub = await revokePayment(payment.email, plan, share);
       if (sub) notify(sub, "refunded").catch(() => {});
     }
+    // Покупка отменена — бонус пригласившему за неё снимается.
+    await revokeReferralBonus(p.orderId);
     await store.updatePayment(p.orderId, { status: "refunded" });
     // Отметку о начислении снимаем только при полном возврате: иначе второй
     // частичный возврат по тому же заказу мы бы молча пропустили.

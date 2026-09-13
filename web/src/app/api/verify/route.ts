@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { absoluteUrl } from "@/lib/site";
 import { getStore } from "@/lib/db";
-import { setSession } from "@/lib/session";
+import { clearRefCookie, REF_COOKIE, setSession } from "@/lib/session";
 import { createAccount, startTrial } from "@/lib/subscription";
 import { notify } from "@/lib/notify";
 import { track } from "@/lib/analytics";
@@ -53,9 +53,15 @@ export async function POST(req: NextRequest) {
       // Восстанавливать нечего: аккаунт не найден. Ведём на регистрацию.
       return NextResponse.redirect(absoluteUrl(req, "/start?mode=signup"), { status: 303 });
     }
-    sub = await createAccount(email, pending.passwordHash);
+    // Пришёл по ссылке друга: связь запоминаем сейчас, бонус пригласившему
+    // будет только за первую оплату. Свой же код не считается.
+    const refCode = req.cookies.get(REF_COOKIE)?.value;
+    const inviter = refCode ? await store.findSubByRefCode(refCode) : null;
+    const referredBy = inviter && inviter.email !== email ? inviter.token : null;
+    sub = await createAccount(email, pending.passwordHash, referredBy);
     isNew = true;
     await track(req.headers, "account_created");
+    if (referredBy) await track(req.headers, "ref_signup");
     if (wantsTrial) {
       const started = await startTrial(sub);
       if (started) {
@@ -73,5 +79,6 @@ export async function POST(req: NextRequest) {
     status: 303,
   });
   setSession(res, sub.token);
+  if (isNew) clearRefCookie(res);
   return res;
 }

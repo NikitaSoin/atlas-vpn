@@ -24,6 +24,28 @@ export function clearSession(res: NextResponse) {
   res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
 }
 
+/**
+ * Cookie с кодом приглашения. Ставится по ссылке `/r/<код>`, живёт месяц:
+ * человек может открыть ссылку сегодня, а зарегистрироваться через неделю.
+ * Читается при создании аккаунта и при оплате без аккаунта.
+ */
+export const REF_COOKIE = "irek_ref";
+const MONTH = 60 * 60 * 24 * 30;
+
+export function setRefCookie(res: NextResponse, code: string) {
+  res.cookies.set(REF_COOKIE, code, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: MONTH,
+  });
+}
+
+export function clearRefCookie(res: NextResponse) {
+  res.cookies.set(REF_COOKIE, "", { path: "/", maxAge: 0 });
+}
+
 /** Подписка текущего посетителя по cookie, либо null. */
 export async function currentSub(): Promise<SubRecord | null> {
   const jar = await cookies();

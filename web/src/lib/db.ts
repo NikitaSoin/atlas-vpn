@@ -50,6 +50,10 @@ export type SubRecord = {
   /** Когда отправили «заканчивается через сутки» / «закончилась». */
   notifiedExpiring: Date | null;
   notifiedExpired: Date | null;
+  /** Код приглашения — хвост реферальной ссылки `/r/<код>`. */
+  refCode: string | null;
+  /** Токен аккаунта, по чьей ссылке человек пришёл. null — сам по себе. */
+  referredBy: string | null;
 };
 
 export type SubPatch = Partial<
@@ -81,7 +85,19 @@ export type PaymentRecord = {
   paymentUrl: string | null;
   /** Момент реального начисления — на нём держится идемпотентность. */
   grantedAt: Date | null;
+  /**
+   * Код приглашения из cookie на момент оплаты. Нужен для оплаты без
+   * аккаунта: вебхук банка cookie не видит, а бонус пригласившему положен.
+   */
+  refCode: string | null;
   createdAt: Date;
+};
+
+export type ReferralBonus = {
+  orderId: string;
+  inviterToken: string;
+  inviteeToken: string;
+  days: number;
 };
 
 export type PanelAccess = {
@@ -146,7 +162,9 @@ export interface Store {
   /** Согласия по адресу почты — для ответа на запрос субъекта и для спора. */
   listConsents(email: string): Promise<ConsentRecord[]>;
   /** Платежи: создание, поиск, отметка о начислении. */
-  createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">): Promise<PaymentRecord>;
+  createPayment(
+    rec: Omit<PaymentRecord, "createdAt" | "grantedAt" | "refCode"> & { refCode?: string | null },
+  ): Promise<PaymentRecord>;
   findPayment(orderId: string): Promise<PaymentRecord | null>;
   updatePayment(
     orderId: string,
@@ -228,6 +246,21 @@ export interface Store {
   listPromos(): Promise<
     { code: string; days: number; usesLeft: number; expiresAt: Date | null }[]
   >;
+  /** Аккаунт по коду приглашения — для ссылки `/r/<код>`. */
+  findSubByRefCode(code: string): Promise<SubRecord | null>;
+  /** Записать, кто привёл человека. Не перезаписывает: первый источник остаётся. */
+  setReferredBy(token: string, inviterToken: string): Promise<void>;
+  /**
+   * Реферальный бонус за первую покупку приглашённого. Ключ — номер заказа:
+   * повторная нотификация банка по тому же заказу бонус не удвоит. Второй
+   * бонус за того же приглашённого тоже не даётся — только первая покупка.
+   * Возвращает true, если бонус записан сейчас.
+   */
+  addReferralBonus(rec: ReferralBonus): Promise<boolean>;
+  /** Отозвать бонус при возврате. null — по заказу бонуса не было или уже отозван. */
+  revokeReferralBonus(orderId: string): Promise<{ inviterToken: string; days: number } | null>;
+  /** Сколько человек пришло по ссылке, сколько из них оплатили, сколько дней начислено. */
+  referralStats(token: string): Promise<{ invited: number; paid: number; bonusDays: number }>;
   createTicket(email: string, body: string): Promise<Ticket>;
   getTicketByToken(token: string): Promise<Ticket | null>;
   getTicketById(id: number): Promise<Ticket | null>;
@@ -239,11 +272,22 @@ export interface Store {
 export type NewSub = Pick<
   SubRecord,
   "token" | "email" | "planId" | "months" | "autoRenew" | "expiresAt" | "isTrial"
-> & { panelToken?: string | null; passwordHash?: string | null };
+> & { panelToken?: string | null; passwordHash?: string | null; referredBy?: string | null };
 
 /** Наш собственный токен аккаунта — хвост личной ссылки, не зависит от панели. */
 export function newAccountToken(): string {
   return randomBytes(12).toString("hex");
+}
+
+/**
+ * Код приглашения: 8 знаков без похожих символов (0/O, 1/I), чтобы его можно
+ * было продиктовать голосом. Уникальность обеспечивает индекс в базе.
+ */
+export function newRefCode(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from(randomBytes(8))
+    .map((b) => alphabet[b % alphabet.length])
+    .join("");
 }
 
 function newCode(): string {
@@ -337,6 +381,22 @@ CREATE TABLE IF NOT EXISTS promo_uses (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (code, email)
 );
+-- Реферальная программа: код приглашения у каждого аккаунта, кто кого привёл,
+-- и бонусы с ключом по заказу — повторная нотификация банка не начислит дважды.
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS ref_code TEXT;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS referred_by TEXT;
+UPDATE subscriptions SET ref_code = upper(substr(md5(random()::text || token), 1, 10)) WHERE ref_code IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_ref_code ON subscriptions (ref_code);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS ref_code TEXT;
+CREATE TABLE IF NOT EXISTS referral_bonuses (
+  order_id      TEXT PRIMARY KEY,
+  inviter_token TEXT NOT NULL,
+  invitee_token TEXT NOT NULL,
+  days          INTEGER NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  revoked_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS referral_bonuses_inviter ON referral_bonuses (inviter_token);
 CREATE TABLE IF NOT EXISTS tickets (
   id          SERIAL PRIMARY KEY,
   token       TEXT UNIQUE NOT NULL,
@@ -478,6 +538,8 @@ class PgStore implements Store {
       telegramChatId: (r.telegram_chat_id as string | null) ?? null,
       notifiedExpiring: r.notified_expiring ? new Date(r.notified_expiring as string) : null,
       notifiedExpired: r.notified_expired ? new Date(r.notified_expired as string) : null,
+      refCode: (r.ref_code as string | null) ?? null,
+      referredBy: (r.referred_by as string | null) ?? null,
     };
   }
 
@@ -522,8 +584,8 @@ class PgStore implements Store {
       // пароля, и вход по нему всегда отвечал «неверный пароль»: проверять
       // было не с чем. В памяти хэш сохранялся, поэтому при разработке
       // вживую это не всплывало (найдено 09.09.2026).
-      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial, panel_token, trial_used, password_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      `INSERT INTO subscriptions (token, email, plan_id, months, auto_renew, expires_at, is_trial, panel_token, trial_used, password_hash, ref_code, referred_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
         rec.token,
         rec.email,
@@ -535,6 +597,8 @@ class PgStore implements Store {
         rec.panelToken ?? null,
         rec.isTrial,
         rec.passwordHash ?? null,
+        newRefCode(),
+        rec.referredBy ?? null,
       ],
     );
     return this.rowToSub(rows[0]);
@@ -596,15 +660,18 @@ class PgStore implements Store {
       status: r.status as string,
       paymentUrl: (r.payment_url as string | null) ?? null,
       grantedAt: r.granted_at ? new Date(r.granted_at as string) : null,
+      refCode: (r.ref_code as string | null) ?? null,
       createdAt: new Date(r.created_at as string),
     };
   }
 
-  async createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">) {
+  async createPayment(
+    rec: Omit<PaymentRecord, "createdAt" | "grantedAt" | "refCode"> & { refCode?: string | null },
+  ) {
     const { rows } = await this.q(
-      `INSERT INTO payments (order_id, payment_id, email, plan_id, amount, auto_renew, status, payment_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [rec.orderId, rec.paymentId, rec.email, rec.planId, rec.amount, rec.autoRenew, rec.status, rec.paymentUrl],
+      `INSERT INTO payments (order_id, payment_id, email, plan_id, amount, auto_renew, status, payment_url, ref_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [rec.orderId, rec.paymentId, rec.email, rec.planId, rec.amount, rec.autoRenew, rec.status, rec.paymentUrl, rec.refCode ?? null],
     );
     return this.rowToPayment(rows[0]);
   }
@@ -853,6 +920,61 @@ class PgStore implements Store {
     }));
   }
 
+  async findSubByRefCode(code: string) {
+    const { rows } = await this.q("SELECT * FROM subscriptions WHERE ref_code = $1", [code]);
+    return rows[0] ? this.rowToSub(rows[0]) : null;
+  }
+
+  async setReferredBy(token: string, inviterToken: string) {
+    await this.q(
+      "UPDATE subscriptions SET referred_by = $2 WHERE token = $1 AND referred_by IS NULL",
+      [token, inviterToken],
+    );
+  }
+
+  async addReferralBonus(rec: ReferralBonus) {
+    // Оба условия в одном запросе: ни повторная нотификация, ни вторая
+    // покупка того же человека бонуса не дадут.
+    const { rows } = await this.q(
+      `INSERT INTO referral_bonuses (order_id, inviter_token, invitee_token, days)
+       SELECT $1, $2, $3, $4
+       WHERE NOT EXISTS (
+         SELECT 1 FROM referral_bonuses WHERE invitee_token = $3 AND revoked_at IS NULL
+       )
+       ON CONFLICT (order_id) DO NOTHING RETURNING order_id`,
+      [rec.orderId, rec.inviterToken, rec.inviteeToken, rec.days],
+    );
+    return rows.length > 0;
+  }
+
+  async revokeReferralBonus(orderId: string) {
+    const { rows } = await this.q(
+      `UPDATE referral_bonuses SET revoked_at = now()
+        WHERE order_id = $1 AND revoked_at IS NULL RETURNING inviter_token, days`,
+      [orderId],
+    );
+    return rows[0]
+      ? { inviterToken: rows[0].inviter_token as string, days: Number(rows[0].days) }
+      : null;
+  }
+
+  async referralStats(token: string) {
+    const invited = await this.q(
+      "SELECT COUNT(*)::int AS n FROM subscriptions WHERE referred_by = $1",
+      [token],
+    );
+    const bonuses = await this.q(
+      `SELECT COUNT(*)::int AS n, COALESCE(SUM(days), 0)::int AS days
+         FROM referral_bonuses WHERE inviter_token = $1 AND revoked_at IS NULL`,
+      [token],
+    );
+    return {
+      invited: Number(invited.rows[0]?.n ?? 0),
+      paid: Number(bonuses.rows[0]?.n ?? 0),
+      bonusDays: Number(bonuses.rows[0]?.days ?? 0),
+    };
+  }
+
   async setTwoFactor(token: string, enabled: boolean) {
     await this.q("UPDATE subscriptions SET two_factor = $2 WHERE token = $1", [token, enabled]);
   }
@@ -974,6 +1096,8 @@ class MemoryStore implements Store {
       telegramChatId: null,
       notifiedExpiring: null,
       notifiedExpired: null,
+      refCode: newRefCode(),
+      referredBy: rec.referredBy ?? null,
     };
     this.subs.push(full);
     return full;
@@ -1006,8 +1130,15 @@ class MemoryStore implements Store {
   async listConsents(email: string) {
     return this.consents.filter((c) => c.email === email).reverse();
   }
-  async createPayment(rec: Omit<PaymentRecord, "createdAt" | "grantedAt">) {
-    const full: PaymentRecord = { ...rec, grantedAt: null, createdAt: new Date() };
+  async createPayment(
+    rec: Omit<PaymentRecord, "createdAt" | "grantedAt" | "refCode"> & { refCode?: string | null },
+  ) {
+    const full: PaymentRecord = {
+      ...rec,
+      refCode: rec.refCode ?? null,
+      grantedAt: null,
+      createdAt: new Date(),
+    };
     this.payments.push(full);
     return full;
   }
@@ -1134,6 +1265,34 @@ class MemoryStore implements Store {
   }
   async listPromos() {
     return [...this.promos.entries()].map(([code, p]) => ({ code, ...p }));
+  }
+  private bonuses: (ReferralBonus & { revokedAt: Date | null })[] = [];
+  async findSubByRefCode(code: string) {
+    return this.subs.find((s) => s.refCode === code) ?? null;
+  }
+  async setReferredBy(token: string, inviterToken: string) {
+    const sub = this.subs.find((s) => s.token === token);
+    if (sub && !sub.referredBy) sub.referredBy = inviterToken;
+  }
+  async addReferralBonus(rec: ReferralBonus) {
+    if (this.bonuses.some((b) => b.orderId === rec.orderId)) return false;
+    if (this.bonuses.some((b) => b.inviteeToken === rec.inviteeToken && !b.revokedAt)) return false;
+    this.bonuses.push({ ...rec, revokedAt: null });
+    return true;
+  }
+  async revokeReferralBonus(orderId: string) {
+    const b = this.bonuses.find((x) => x.orderId === orderId && !x.revokedAt);
+    if (!b) return null;
+    b.revokedAt = new Date();
+    return { inviterToken: b.inviterToken, days: b.days };
+  }
+  async referralStats(token: string) {
+    const mine = this.bonuses.filter((b) => b.inviterToken === token && !b.revokedAt);
+    return {
+      invited: this.subs.filter((s) => s.referredBy === token).length,
+      paid: mine.length,
+      bonusDays: mine.reduce((sum, b) => sum + b.days, 0),
+    };
   }
   async setTwoFactor(token: string, enabled: boolean) {
     const sub = this.subs.find((s) => s.token === token);

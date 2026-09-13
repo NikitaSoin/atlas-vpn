@@ -1,13 +1,15 @@
 import { getPanel } from "./panel";
-import { getStore, newAccountToken, type SubRecord } from "./db";
+import { getStore, newAccountToken, type PaymentRecord, type SubRecord } from "./db";
 import {
   addDays,
   addMonths,
+  findPlan,
   GRACE_HOURS,
   TRIAL_DAYS,
   TRIAL_TRAFFIC_GB,
   type Plan,
 } from "./plans";
+import { siteUrl } from "./site";
 
 /**
  * Бизнес-логика подписки в одном месте: триал, оплата, продление, статус.
@@ -125,15 +127,20 @@ export async function provisionPending(): Promise<number> {
   return done;
 }
 
-/** Регистрация: просто аккаунт. Триал или тариф человек выбирает сам в кабинете. */
+/**
+ * Регистрация: просто аккаунт. Триал или тариф человек выбирает сам в кабинете.
+ * `referredBy` — токен пригласившего, если человек пришёл по реферальной ссылке.
+ */
 export async function createAccount(
   email: string,
   passwordHash: string | null = null,
+  referredBy: string | null = null,
 ): Promise<SubRecord> {
   return getStore().createSub({
     token: newAccountToken(),
     email,
     passwordHash,
+    referredBy,
     planId: "none",
     months: 0,
     autoRenew: false,
@@ -268,18 +275,115 @@ export async function revokeUnlimited(email: string): Promise<SubRecord | null> 
  * обманули.
  */
 export async function applyPromoDays(email: string, days: number): Promise<SubRecord | null> {
-  const store = getStore();
-  const sub = await store.findSubByEmail(email.trim().toLowerCase());
-  if (!sub) return null;
+  const sub = await getStore().findSubByEmail(email.trim().toLowerCase());
+  return sub ? addFreeDays(sub, days, "promo") : null;
+}
+
+/**
+ * Общая часть промокода и реферального бонуса: дни к остатку, лимит долой.
+ * `planIdIfNone` подставляется, когда доступа ещё не было или был пробный:
+ * по нему в кабинете и админке видно, откуда взялся срок.
+ */
+async function addFreeDays(
+  sub: SubRecord,
+  days: number,
+  planIdIfNone: string,
+): Promise<SubRecord | null> {
   const now = new Date();
   const base = sub.expiresAt > now ? sub.expiresAt : now;
-  const updated = await store.updateSub(sub.token, {
-    planId: sub.planId === "none" || sub.isTrial ? "promo" : sub.planId,
+  const updated = await getStore().updateSub(sub.token, {
+    planId: sub.planId === "none" || sub.isTrial ? planIdIfNone : sub.planId,
     expiresAt: addDays(base, days),
     isTrial: false,
   });
   if (!updated) return null;
   return updated.panelToken ? syncPanel(updated, 0) : provisionPanel(updated);
+}
+
+/**
+ * Реферальная программа.
+ *
+ * Условия (продуктовое решение 13.09.2026): когда приглашённый совершает
+ * ПЕРВУЮ покупку, пригласивший получает около четверти её длительности:
+ * месяц → 7 дней, полгода → 45, год → 90. Бонус прибавляется к действующему
+ * сроку; если доступ закончился — отсчитывается от момента начисления.
+ * За пробный период и промокод бонуса нет: это не покупки.
+ *
+ * Защиты. Ключ бонуса — номер заказа, поэтому повторная нотификация банка
+ * по той же оплате бонус не удвоит. Вторая покупка того же приглашённого
+ * бонуса не даёт. Пригласить самого себя нельзя: код своего аккаунта
+ * отбрасывается, а одна почта — один аккаунт.
+ *
+ * Возврат покупки отзывает бонус целиком (см. `revokeReferralBonus`).
+ */
+export const REFERRAL_BONUS_DAYS: Record<string, number> = { m1: 7, m6: 45, m12: 90 };
+
+export function referralBonusDays(plan: Plan): number {
+  return REFERRAL_BONUS_DAYS[plan.id] ?? Math.round(plan.months * 7.5);
+}
+
+/** Ссылка-приглашение для кабинета: сайт + код аккаунта. */
+export function referralLink(sub: SubRecord): string | null {
+  return sub.refCode ? `${siteUrl()}/r/${sub.refCode}` : null;
+}
+
+/**
+ * Начислить бонус пригласившему за оплаченный заказ приглашённого.
+ * Вызывается после реального начисления оплаты. Возвращает пригласившего и
+ * число дней, либо null, когда бонус не положен.
+ */
+export async function grantReferralBonus(
+  payment: PaymentRecord,
+  invitee: SubRecord,
+): Promise<{ inviter: SubRecord; days: number } | null> {
+  const store = getStore();
+  let inviterToken = invitee.referredBy;
+
+  // Оплата без аккаунта: cookie с кодом приехала вместе с платежом.
+  if (!inviterToken && payment.refCode) {
+    const inviter = await store.findSubByRefCode(payment.refCode);
+    if (inviter && inviter.token !== invitee.token) {
+      await store.setReferredBy(invitee.token, inviter.token);
+      inviterToken = inviter.token;
+    }
+  }
+  if (!inviterToken || inviterToken === invitee.token) return null;
+
+  const plan = findPlan(payment.planId);
+  const inviter = await store.findSubByToken(inviterToken);
+  if (!plan || !inviter) return null;
+
+  const days = referralBonusDays(plan);
+  const recorded = await store.addReferralBonus({
+    orderId: payment.orderId,
+    inviterToken,
+    inviteeToken: invitee.token,
+    days,
+  });
+  if (!recorded) return null;
+
+  const updated = await addFreeDays(inviter, days, "bonus");
+  return updated ? { inviter: updated, days } : null;
+}
+
+/**
+ * Возврат покупки приглашённого: снимаем бонус с пригласившего. Срок не
+ * уходит в прошлое — если бонусные дни уже прожиты, доступ просто
+ * заканчивается сейчас. Отзывается при любом возврате, и частичном тоже:
+ * бонус был за покупку, а покупка отменена.
+ */
+export async function revokeReferralBonus(orderId: string): Promise<SubRecord | null> {
+  const store = getStore();
+  const revoked = await store.revokeReferralBonus(orderId);
+  if (!revoked) return null;
+  const inviter = await store.findSubByToken(revoked.inviterToken);
+  if (!inviter) return null;
+  const now = new Date();
+  const rolled = addDays(inviter.expiresAt, -revoked.days);
+  const updated = await store.updateSub(inviter.token, {
+    expiresAt: rolled > now ? rolled : now,
+  });
+  return updated ? syncPanel(updated, 0) : null;
 }
 
 /** Отправить в панель срок и лимит из базы. База — источник правды по датам. */

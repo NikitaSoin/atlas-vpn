@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { adminConfigured, isAdmin } from "@/lib/admin";
 import { getStore } from "@/lib/db";
 import { formatDate, stateLabel, subState } from "@/lib/subscription";
@@ -23,12 +24,36 @@ const FUNNEL: { event: string; label: string }[] = [
 
 export const dynamic = "force-dynamic";
 
+const inputCls =
+  "rounded-xl border border-line bg-ink px-3 py-2 text-sm outline-none focus:border-accent";
+const btnCls =
+  "rounded-xl border border-line px-3 py-1.5 text-xs transition hover:border-accent";
+
+/** Результат последнего действия — приходит параметром после редиректа. */
+function Notice({ tone, children }: { tone: "ok" | "bad"; children: ReactNode }) {
+  return (
+    <p
+      className={`mt-3 rounded-xl px-3 py-2 text-sm ${
+        tone === "ok" ? "bg-good/10 text-good" : "bg-bad/10 text-bad"
+      }`}
+    >
+      {children}
+    </p>
+  );
+}
+
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ err?: string }>;
+  searchParams: Promise<{
+    err?: string;
+    ok?: string;
+    fail?: string;
+    promo?: string;
+    promoerr?: string;
+  }>;
 }) {
-  const { err } = await searchParams;
+  const { err, ok, fail, promo, promoerr } = await searchParams;
 
   if (!adminConfigured()) {
     return (
@@ -78,9 +103,10 @@ export default async function AdminPage({
     store.listTickets(),
     store.eventStats(7),
     store.eventStats(1),
-    store.listSubs(100),
+    store.listSubs(200),
     store.listPromos(),
   ]);
+  const now = new Date();
   const byState = new Map<string, number>();
   for (const s of subs) {
     const st = subState(s);
@@ -157,9 +183,35 @@ export default async function AdminPage({
           Подписки{" "}
           <span className="text-sm text-muted">
             · пробных: {byState.get("trial") ?? 0} · платных: {byState.get("active") ?? 0} ·
-            истекших: {(byState.get("grace") ?? 0) + (byState.get("expired") ?? 0)}
+            истекших: {(byState.get("grace") ?? 0) + (byState.get("expired") ?? 0)} ·
+            бесплатных: {subs.filter((s) => s.planId === "unlimited").length}
           </span>
         </h2>
+        {/*
+          Бесплатный доступ для своих: подписка без срока и лимита трафика.
+          Прав на управление сервисом не даёт. Кнопка в строке — для тех, кто
+          в списке; форма ниже — для любого адреса, если аккаунт старше
+          показанных двухсот.
+        */}
+        {ok && <Notice tone="ok">Готово: {ok}</Notice>}
+        {fail && (
+          <Notice tone="bad">
+            Не вышло: {fail}. Аккаунт с такой почтой не найден или доступ уже в этом состоянии.
+          </Notice>
+        )}
+        <form action="/api/admin" method="POST" className="mt-3 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="action" value="grant_unlimited" />
+          <input
+            type="email"
+            name="email"
+            required
+            placeholder="почта аккаунта"
+            className={`${inputCls} min-w-0 flex-1`}
+          />
+          <button type="submit" className={btnCls}>
+            Выдать бесплатный доступ
+          </button>
+        </form>
         {subs.length === 0 ? (
           <p className="mt-2 text-sm text-muted">Пока никого.</p>
         ) : (
@@ -171,20 +223,154 @@ export default async function AdminPage({
                   <th className="py-1 font-normal">Статус</th>
                   <th className="py-1 font-normal">До</th>
                   <th className="py-1 font-normal">TG</th>
+                  <th className="py-1 font-normal">Приглашён</th>
+                  <th className="py-1 font-normal"></th>
                 </tr>
               </thead>
               <tbody>
-                {subs.map((s) => (
-                  <tr key={s.token} className="border-t border-line/60">
-                    <td className="py-1.5">{s.email}</td>
-                    <td className="py-1.5">
-                      {stateLabel[subState(s)].split(" — ")[0]}
-                      {!s.panelToken && <span className="ml-1 text-amber-700">· без доступа в панели</span>}
-                    </td>
-                    <td className="py-1.5">{formatDate(s.expiresAt)}</td>
-                    <td className="py-1.5">{s.telegramChatId ? "✓" : ""}</td>
-                  </tr>
-                ))}
+                {subs.map((s) => {
+                  const free = s.planId === "unlimited";
+                  const inviter = s.referredBy
+                    ? subs.find((x) => x.token === s.referredBy)?.email ?? "да"
+                    : "";
+                  return (
+                    <tr key={s.token} className="border-t border-line/60">
+                      <td className="py-1.5">{s.email}</td>
+                      <td className="py-1.5">
+                        {free ? "Бесплатный" : stateLabel[subState(s)].split(" — ")[0]}
+                        {!s.panelToken && s.planId !== "none" && (
+                          <span className="ml-1 text-amber-700">· без доступа в панели</span>
+                        )}
+                      </td>
+                      <td className="py-1.5">{free ? "∞" : formatDate(s.expiresAt)}</td>
+                      <td className="py-1.5">{s.telegramChatId ? "✓" : ""}</td>
+                      <td className="py-1.5 text-muted">{inviter}</td>
+                      <td className="py-1.5 text-right">
+                        <form action="/api/admin" method="POST">
+                          <input
+                            type="hidden"
+                            name="action"
+                            value={free ? "revoke_unlimited" : "grant_unlimited"}
+                          />
+                          <input type="hidden" name="email" value={s.email} />
+                          <button type="submit" className={btnCls}>
+                            {free ? "Снять бесплатный" : "Бесплатно навсегда"}
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
+        <h2 className="font-medium">
+          Промокоды{" "}
+          <span className="text-sm text-muted">· код даёт дни, применяется в кабинете</span>
+        </h2>
+        {promo && (
+          <Notice tone="ok">
+            Создан код <b className="font-mono">{promo}</b>
+          </Notice>
+        )}
+        {promoerr && (
+          <Notice tone="bad">
+            Код <b className="font-mono">{promoerr}</b> уже существует.
+          </Notice>
+        )}
+        {/*
+          Настройки: сколько дней (готовые сроки или своё число), сколько раз
+          можно применить (1 — разовый) и до какой даты действует. Пустой код
+          сгенерируется сам — придуманные людьми коды подбираются перебором.
+        */}
+        <form
+          action="/api/admin"
+          method="POST"
+          className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]"
+        >
+          <input type="hidden" name="action" value="create_promo" />
+          <label className="text-xs text-muted">
+            Срок
+            <select name="days" defaultValue="7" className={`${inputCls} mt-1 w-full`}>
+              <option value="7">7 дней (неделя)</option>
+              <option value="14">14 дней</option>
+              <option value="30">30 дней (месяц)</option>
+              <option value="90">90 дней</option>
+              <option value="180">180 дней (полгода)</option>
+              <option value="365">365 дней (год)</option>
+            </select>
+          </label>
+          <label className="text-xs text-muted">
+            Своё число дней
+            <input
+              type="number"
+              name="days_custom"
+              min={1}
+              max={365}
+              placeholder="если не из списка"
+              className={`${inputCls} mt-1 w-full`}
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Применений (1 — разовый)
+            <input
+              type="number"
+              name="uses"
+              min={1}
+              max={10000}
+              defaultValue={1}
+              className={`${inputCls} mt-1 w-full`}
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Действует до
+            <input type="date" name="expires" className={`${inputCls} mt-1 w-full`} />
+          </label>
+          <label className="text-xs text-muted">
+            Код (пусто — сгенерировать)
+            <input
+              name="code"
+              maxLength={32}
+              placeholder="IREK…"
+              className={`${inputCls} mt-1 w-full uppercase`}
+            />
+          </label>
+          <button type="submit" className={`${btnCls} sm:col-span-5 sm:justify-self-start`}>
+            Создать промокод
+          </button>
+        </form>
+        {promos.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">Промокодов пока нет.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="mt-3 w-full text-sm">
+              <thead className="text-left text-muted">
+                <tr>
+                  <th className="py-1 font-normal">Код</th>
+                  <th className="py-1 font-normal">Дней</th>
+                  <th className="py-1 font-normal">Осталось применений</th>
+                  <th className="py-1 font-normal">Действует до</th>
+                </tr>
+              </thead>
+              <tbody>
+                {promos.map((p) => {
+                  const dead = p.usesLeft <= 0 || (p.expiresAt !== null && p.expiresAt <= now);
+                  return (
+                    <tr key={p.code} className={`border-t border-line/60 ${dead ? "text-muted" : ""}`}>
+                      <td className="py-1.5 font-mono">{p.code}</td>
+                      <td className="py-1.5">{p.days}</td>
+                      <td className="py-1.5">{p.usesLeft}</td>
+                      <td className="py-1.5">
+                        {p.expiresAt ? formatDate(p.expiresAt) : "бессрочно"}
+                        {dead && " · не действует"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

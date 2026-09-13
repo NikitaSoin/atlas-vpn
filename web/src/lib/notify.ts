@@ -84,6 +84,18 @@ export async function notify(sub: SubRecord, kind: ReminderKind | "trial" | "pai
   return deliver(sub, subject, text);
 }
 
+/** Пригласившему: друг оплатил, дни прибавлены. */
+export async function notifyReferralBonus(inviter: SubRecord, days: number) {
+  const site = siteUrl();
+  return deliver(
+    inviter,
+    `${brand.name}: +${days} дн. за приглашённого друга`,
+    `Ваш друг оплатил подписку ${brand.name}, и мы прибавили вам ${days} дн. бесплатно. ` +
+      `Доступ действует до ${formatDateTime(inviter.expiresAt)} (МСК).\n\n` +
+      `Ссылка для новых приглашений — в кабинете: ${site}/account`,
+  );
+}
+
 /** За сколько часов до конца предупреждать. */
 const REMIND_BEFORE_HOURS = 24;
 

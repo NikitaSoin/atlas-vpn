@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import { absoluteUrl } from "@/lib/site";
 import { findPlan, priceKopecks } from "@/lib/plans";
 import { getStore } from "@/lib/db";
-import { setSession } from "@/lib/session";
-import { applyPayment } from "@/lib/subscription";
-import { notify } from "@/lib/notify";
+import { REF_COOKIE, setSession } from "@/lib/session";
+import { applyPayment, grantReferralBonus } from "@/lib/subscription";
+import { notify, notifyReferralBonus } from "@/lib/notify";
 import { track } from "@/lib/analytics";
 import { acquiringConfigured, initPayment } from "@/lib/acquiring";
 import { brand } from "@/lib/brand";
@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
       ? "checkout_after_trial"
       : "checkout_renewal"
     : "checkout_new";
+  // Код приглашения едет с платежом: вебхук банка cookie не увидит, а бонус
+  // пригласившему положен и при оплате без регистрации.
+  const refCode = req.cookies.get(REF_COOKIE)?.value ?? null;
 
   if (acquiringConfigured()) {
     const orderId = `irek-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -63,6 +66,7 @@ export async function POST(req: NextRequest) {
       autoRenew,
       status: "NEW",
       paymentUrl: null,
+      refCode,
     });
     try {
       const r = await initPayment({
@@ -132,8 +136,25 @@ export async function POST(req: NextRequest) {
     );
   }
   await track(req.headers, event);
+  // Платёж записываем и на стенде: на нём держится реферальный бонус, а
+  // баннер «оплата получена» в кабинете смотрит на последний платёж.
+  const orderId = `stand-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const payment = await store.createPayment({
+    orderId,
+    paymentId: null,
+    email,
+    planId: plan.id,
+    amount: priceKopecks(plan),
+    autoRenew,
+    status: "STAND",
+    paymentUrl: null,
+    refCode,
+  });
+  await store.markGranted(orderId);
   const sub = await applyPayment(email, plan, autoRenew);
   notify(sub, "paid").catch(() => {});
+  const bonus = await grantReferralBonus(payment, sub);
+  if (bonus) notifyReferralBonus(bonus.inviter, bonus.days).catch(() => {});
   const res = NextResponse.redirect(absoluteUrl(req, "/account?paid=1"), { status: 303 });
   setSession(res, sub.token);
   return res;
