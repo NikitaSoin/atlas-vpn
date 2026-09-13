@@ -112,7 +112,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Стендовый режим без реквизитов банка: выдаём доступ сразу.
+  /*
+    Стендовый режим: без реквизитов эквайринга доступ выдаётся сразу, чтобы
+    сценарий проходился на машине разработчика.
+
+    🔴 На боевом сайте это недопустимо. 10.09.2026 при переезде с Т-Кассы на
+    ЮKassa возникло окно, когда старые реквизиты уже убрали, а новые ещё не
+    вписали, — и сайт выдал восемнадцать месяцев доступа бесплатно по двум
+    нажатиям кнопки «Оплатить». Поэтому режим включается только явным
+    ALLOW_FREE_CHECKOUT=1, а без него человек видит честное «оплата временно
+    недоступна» вместо подарка.
+  */
+  if (process.env.ALLOW_FREE_CHECKOUT !== "1") {
+    console.error("[оплата] реквизиты эквайринга не заданы — оплата недоступна");
+    await track(req.headers, "checkout_unavailable");
+    return NextResponse.redirect(
+      absoluteUrl(req, `/checkout?plan=${plan.id}&err=terminal`),
+      { status: 303 },
+    );
+  }
   await track(req.headers, event);
   const sub = await applyPayment(email, plan, autoRenew);
   notify(sub, "paid").catch(() => {});
