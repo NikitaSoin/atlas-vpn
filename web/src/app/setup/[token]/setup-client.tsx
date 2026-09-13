@@ -32,7 +32,10 @@ const stepNum =
 export default function SetupClient({
   importLink,
   qrSvg,
+  showConfirm = false,
 }: {
+  /** Показывать ли вопрос «всё работает?». В кабинете да, на отдельной странице нет. */
+  showConfirm?: boolean;
   /**
    * Единственный адрес подписки, который отдаём приложению — наш `/sub/{token}`.
    * Адрес самой панели сюда попадать НЕ должен: он ведёт на ретранслятор
@@ -213,6 +216,32 @@ export default function SetupClient({
             Это личная ссылка — не передавайте её другим людям.
           </p>
         </details>
+      )}
+
+      {/*
+        Явное подтверждение. Нажатие «Добавить подписку» ничего не доказывает:
+        приложение могло не импортировать ссылку, не запуститься или упереться
+        в сеть. Поэтому спрашиваем прямо, и только после ответа переставляем
+        блоки в кабинете.
+      */}
+      {showConfirm && (
+        <form
+          action="/api/account"
+          method="post"
+          className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-ink p-4"
+        >
+          <span className="text-sm leading-relaxed text-muted">
+            Включили VPN и интернет работает? Скажите нам — уберём инструкцию
+            и покажем срок подписки первым.
+          </span>
+          <input type="hidden" name="action" value="setup_done" />
+          <button
+            type="submit"
+            className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition hover:brightness-110"
+          >
+            Да, всё работает
+          </button>
+        </form>
       )}
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-4 text-sm text-muted">

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SubRecord } from "@/lib/db";
-import { GRACE_HOURS, TRIAL_TRAFFIC_GB } from "@/lib/plans";
+import { GRACE_HOURS, plans, TRIAL_TRAFFIC_GB } from "@/lib/plans";
 import { formatDate, subState, timeLeft } from "@/lib/subscription";
 
 /**
@@ -50,6 +50,14 @@ export default function StatusCard({ sub }: { sub: SubRecord }) {
         : state === "grace"
           ? `Ещё ${GRACE_HOURS} часа на продление`
           : "Можно возобновить";
+
+  /*
+    Цена нужна прямо здесь. Человек решает, продолжать ли, в тот момент, когда
+    видит «осталось два дня», — и если суммы рядом нет, он идёт её искать, а
+    чаще просто закрывает вкладку.
+  */
+  const cheapest = plans.reduce((a, b) => (a.perMonth <= b.perMonth ? a : b));
+  const priceHint = `Продолжение — от ${cheapest.perMonth} ₽ в месяц.`;
 
   const text = preparing
     ? "Аккаунт готов. Настройки подключения появятся после подготовки доступа."

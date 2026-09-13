@@ -12,7 +12,13 @@ import SetupClient from "./[token]/setup-client";
  * панель тогда не ответила, доступ доводит планировщик, и страница подхватит
  * его сама по авто-обновлению. Инструкция по установке видна всегда.
  */
-export default async function SetupSection({ sub }: { sub: SubRecord }) {
+export default async function SetupSection({
+  sub,
+  showConfirm = false,
+}: {
+  sub: SubRecord;
+  showConfirm?: boolean;
+}) {
   // Отдаём ССЫЛКУ-ПОДПИСКУ, а не один сервер: в ней лежат все точки входа,
   // приложение подхватит новые само, когда мы их добавим.
   //
@@ -29,7 +35,7 @@ export default async function SetupSection({ sub }: { sub: SubRecord }) {
   return (
     <>
       {!importLink && <meta httpEquiv="refresh" content="20" />}
-      <SetupClient importLink={importLink} qrSvg={qrSvg} />
+      <SetupClient importLink={importLink} qrSvg={qrSvg} showConfirm={showConfirm} />
     </>
   );
 }

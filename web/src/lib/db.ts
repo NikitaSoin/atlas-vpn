@@ -26,6 +26,14 @@ export type SubRecord = {
   /** Двухшаговый вход: после пароля запрашивается код из письма. */
   twoFactor: boolean;
   /**
+   * Человек подтвердил, что подключение заработало.
+   *
+   * Нажатие «Добавить подписку» этого не доказывает: приложение могло не
+   * импортировать ссылку, не запуститься или упереться в сеть. Поэтому
+   * порядок блоков в кабинете меняем по явному подтверждению.
+   */
+  setupDone: boolean;
+  /**
    * Идентификатор пользователя в VPN-панели (shortUuid). null — доступ ещё
    * не заведён: панель была недоступна при регистрации, планировщик
    * повторяет попытку. Аккаунт на сайте существует независимо от панели.
@@ -198,6 +206,15 @@ export interface Store {
   setPassword(token: string, passwordHash: string): Promise<void>;
   /** Включить или выключить двухшаговый вход. */
   setTwoFactor(token: string, enabled: boolean): Promise<void>;
+  /**
+   * Человек подтвердил, что подключение заработало.
+   *
+   * Нажатие «Добавить подписку» этого не доказывает: приложение могло не
+   * импортировать, не запуститься или упереться в сеть. Поэтому порядок
+   * блоков в кабинете переставляем по явному подтверждению, а не по факту
+   * нажатия кнопки.
+   */
+  setSetupDone(token: string, done: boolean): Promise<void>;
   createTicket(email: string, body: string): Promise<Ticket>;
   getTicketByToken(token: string): Promise<Ticket | null>;
   getTicketById(id: number): Promise<Ticket | null>;
@@ -289,6 +306,7 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS two_factor BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sub_cache TEXT;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS sub_cache_at TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS setup_done BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE TABLE IF NOT EXISTS tickets (
   id          SERIAL PRIMARY KEY,
   token       TEXT UNIQUE NOT NULL,
@@ -421,6 +439,7 @@ class PgStore implements Store {
       isTrial: Boolean(r.is_trial),
       trialUsed: Boolean(r.trial_used),
       passwordHash: (r.password_hash as string | null) ?? null,
+      setupDone: Boolean(r.setup_done),
       twoFactor: Boolean(r.two_factor),
       panelToken: (r.panel_token as string | null) ?? null,
       panelUrl: (r.panel_url as string | null) ?? null,
@@ -758,6 +777,10 @@ class PgStore implements Store {
     ]);
   }
 
+  async setSetupDone(token: string, done: boolean) {
+    await this.q("UPDATE subscriptions SET setup_done = $2 WHERE token = $1", [token, done]);
+  }
+
   async setTwoFactor(token: string, enabled: boolean) {
     await this.q("UPDATE subscriptions SET two_factor = $2 WHERE token = $1", [token, enabled]);
   }
@@ -869,6 +892,7 @@ class MemoryStore implements Store {
       ...rec,
       passwordHash: rec.passwordHash ?? null,
       twoFactor: false,
+      setupDone: false,
       trialUsed: rec.isTrial,
       panelToken: rec.panelToken ?? null,
       panelUrl: null,
@@ -1015,6 +1039,10 @@ class MemoryStore implements Store {
   async setPassword(token: string, passwordHash: string) {
     const sub = this.subs.find((s) => s.token === token);
     if (sub) sub.passwordHash = passwordHash;
+  }
+  async setSetupDone(token: string, done: boolean) {
+    const sub = this.subs.find((s) => s.token === token);
+    if (sub) sub.setupDone = done;
   }
   async setTwoFactor(token: string, enabled: boolean) {
     const sub = this.subs.find((s) => s.token === token);

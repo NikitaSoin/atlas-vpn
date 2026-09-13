@@ -17,6 +17,17 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
+  /*
+    Человек сам говорит, что подключение заработало. Это надёжнее любого
+    косвенного признака: нажатие «Добавить подписку» не доказывает, что
+    приложение импортировало ссылку и подняло соединение.
+  */
+  if (action === "setup_done" || action === "setup_again") {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    if (token) await getStore().setSetupDone(token, action === "setup_done");
+    return NextResponse.redirect(absoluteUrl(req, "/account"), { status: 303 });
+  }
+
   if (action === "two_factor") {
     const token = req.cookies.get(SESSION_COOKIE)?.value;
     const store = getStore();

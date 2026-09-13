@@ -134,9 +134,35 @@ export default async function AccountPage({
         </div>
       )}
 
+      {/*
+        Пока подключение не подтверждено, первой идёт инструкция: человеку
+        нужно именно это. После подтверждения наверх поднимается статус, а
+        инструкция сворачивается — но остаётся раскрываемой, потому что
+        подключать новое устройство приходится и потом.
+
+        На узком экране это особенно заметно: в одну колонку статус оказывался
+        под длинной инструкцией, и срок подписки было не видно без прокрутки.
+      */}
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-6">
-          <SetupSection sub={sub} />
+        <div className={`space-y-6 ${sub.setupDone ? "order-2 lg:order-none" : ""}`}>
+          {sub.setupDone ? (
+            <details className="rounded-2xl border border-line bg-surface p-5">
+              <summary className="cursor-pointer font-medium">
+                Подключить ещё одно устройство
+              </summary>
+              <div className="mt-4">
+                <SetupSection sub={sub} />
+              </div>
+              <form action="/api/account" method="post" className="mt-4">
+                <input type="hidden" name="action" value="setup_again" />
+                <button type="submit" className="text-sm text-muted hover:text-fg">
+                  Показывать инструкцию сразу
+                </button>
+              </form>
+            </details>
+          ) : (
+            <SetupSection sub={sub} showConfirm />
+          )}
 
           <section className="rounded-2xl border border-line bg-surface p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -157,7 +183,7 @@ export default async function AccountPage({
           </section>
         </div>
 
-        <aside className="space-y-6">
+        <aside className={`space-y-6 ${sub.setupDone ? "order-1 lg:order-none" : ""}`}>
           <StatusCard sub={sub} />
 
           <section className="rounded-2xl border border-line bg-surface p-5">
