@@ -44,8 +44,8 @@ export default async function RootLayout({
     <html lang="ru">
       <body className={`${golos.className} min-h-screen antialiased`}>
         <header className="border-b border-line/70 bg-surface/80 backdrop-blur">
-          <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
-            <Link href="/" className="flex items-center gap-2.5 text-lg font-semibold">
+          <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-5">
+            <Link href="/" className="flex shrink-0 items-center gap-2.5 text-lg font-semibold">
               <Image
                 src="/emblem.png"
                 alt=""
@@ -56,7 +56,7 @@ export default async function RootLayout({
               <span className="text-primary">IREK</span>
               <span className="-ml-1 text-accent-ink">VPN</span>
             </Link>
-            <nav className="flex items-center gap-4 text-[15px] text-muted sm:gap-6">
+            <nav className="flex min-w-0 items-center gap-3 text-[15px] text-muted sm:gap-6">
               <Link href="/plans" className="hover:text-fg">
                 Тарифы
               </Link>

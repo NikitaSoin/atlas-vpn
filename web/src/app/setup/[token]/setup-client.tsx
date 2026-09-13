@@ -187,7 +187,7 @@ export default function SetupClient({
             сможет получать обновления и резервные входы.
           </p>
           <div className="mt-4 flex gap-2">
-            <code className="flex-1 truncate rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-muted">
+            <code className="min-w-0 flex-1 truncate rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-muted">
               {importLink}
             </code>
             <button
