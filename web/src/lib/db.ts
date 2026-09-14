@@ -538,8 +538,22 @@ class PgStore implements Store {
     if (!this.ready) {
       this.ready = (async () => {
         const { Pool } = await import("pg");
-        this.pool = new Pool({ ...pgConfig(this.url), max: 5 });
-        await this.pool.query(SCHEMA);
+        const pool = new Pool({ ...pgConfig(this.url), max: 5 });
+        try {
+          await pool.query(SCHEMA);
+        } catch (e) {
+          /*
+            Неудачу не запоминать. DNS или сеть хостинга при старте могут
+            моргнуть, и без сброса каждый следующий запрос получал бы ту же
+            ошибку до перезапуска процесса. 14.09.2026 так и вышло: после
+            деплоя `getaddrinfo EAI_AGAIN` на адрес базы — и регистрация с
+            входом лежали, хотя база давно отвечала.
+          */
+          await pool.end().catch(() => {});
+          this.ready = null;
+          throw e;
+        }
+        this.pool = pool;
       })();
     }
     await this.ready;
