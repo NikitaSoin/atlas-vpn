@@ -3,14 +3,14 @@ import { absoluteUrl } from "@/lib/site";
 import { getStore } from "@/lib/db";
 import { mailConfigured, sendMail } from "@/lib/mail";
 import { brand } from "@/lib/brand";
-import { track, visitorHash } from "@/lib/analytics";
-import { currentVersions } from "@/lib/legal";
+import { track } from "@/lib/analytics";
 import { hashPassword, passwordProblem } from "@/lib/password";
 
 export const CODE_TTL_MIN = 10;
 
 /**
- * Регистрация: почта, пароль и согласия → код подтверждения на почту.
+ * Регистрация: почта и пароль → код подтверждения на почту. Согласий с
+ * документами нет с 14.09.2026: документы убраны с сайта по решению владельца.
  * Аккаунт создаётся только после ввода кода (`/api/verify`), поэтому пароль
  * до этого момента живёт в записи кода — уже в виде хеша, не в открытом виде.
  *
@@ -47,10 +47,6 @@ export async function POST(req: NextRequest) {
   }
 
   if (mode === "signup") {
-    // Галочки проверяем на сервере: браузеру доверять нельзя.
-    if (form.get("acceptTerms") !== "on" || form.get("acceptPrivacy") !== "on") {
-      return NextResponse.redirect(absoluteUrl(req, `${back}&err=consent`), { status: 303 });
-    }
     const existing = await store.findSubByEmail(email);
     if (existing) {
       // Аккаунт есть: молча уводим на вход, не подтверждая факт регистрации.
@@ -58,10 +54,6 @@ export async function POST(req: NextRequest) {
         status: 303,
       });
     }
-    const visitor = visitorHash(req.headers);
-    const versions = currentVersions();
-    await store.addConsent({ email, kind: "offer_and_rules", versions, visitor });
-    await store.addConsent({ email, kind: "personal_data", versions, visitor });
   }
 
   const passwordHash = await hashPassword(password);

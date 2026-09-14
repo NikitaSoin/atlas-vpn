@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { plans } from "@/lib/plans";
+import { brand } from "@/lib/brand";
+import { PAYMENTS_ENABLED } from "@/lib/acquiring";
 import { trackClient } from "@/lib/track-client";
 
 const rub = (n: number) => `${n.toLocaleString("ru-RU")} ₽`;
@@ -70,14 +72,32 @@ export default function PlanPicker({
           <span className="text-sm text-muted">{plan.title} · одним платежом</span>
           <div className="text-2xl font-semibold">{rub(plan.price)}</div>
         </div>
-        <a
-          href={href}
-          onClick={() => trackClient("tariff_click", plan.id)}
-          className="rounded-xl bg-primary px-5 py-3 font-medium text-white transition hover:brightness-110"
-        >
-          Перейти к оплате
-        </a>
+        {PAYMENTS_ENABLED ? (
+          <a
+            href={href}
+            onClick={() => trackClient("tariff_click", plan.id)}
+            className="rounded-xl bg-primary px-5 py-3 font-medium text-white transition hover:brightness-110"
+          >
+            Перейти к оплате
+          </a>
+        ) : (
+          <a
+            href={brand.supportTelegram}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => trackClient("tariff_click", plan.id)}
+            className="rounded-xl bg-primary px-5 py-3 font-medium text-white transition hover:brightness-110"
+          >
+            Написать в Telegram
+          </a>
+        )}
       </div>
+      {!PAYMENTS_ENABLED && (
+        <p className="mt-3 text-sm text-muted">
+          Оплата на сайте отключена. Напишите нам в Telegram — подключим доступ вручную,
+          ссылка и настройки останутся прежними.
+        </p>
+      )}
     </div>
   );
 }

@@ -40,16 +40,6 @@ body {
 }
 
 /* Юридические документы: читаемая типографика для текста из Markdown. */
-.legal { line-height: 1.7; }
-.legal h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; }
-.legal h2 { font-size: 1.25rem; font-weight: 600; margin-top: 2.25rem; }
-.legal h3 { font-size: 1.05rem; font-weight: 600; margin-top: 1.5rem; }
-.legal p, .legal ul, .legal ol, .legal blockquote { margin-top: 0.9rem; color: var(--color-muted); }
-.legal h1 + p { margin-top: 0.5rem; }
-.legal ul, .legal ol { padding-left: 1.25rem; }
-.legal li { margin-top: 0.35rem; }
-.legal ul { list-style: disc; }
-.legal ol { list-style: decimal; }
 .legal strong { color: var(--color-fg); font-weight: 600; }
 .legal code { background: var(--color-surface-2); border-radius: 0.35rem; padding: 0.1rem 0.35rem; font-size: 0.9em; }
 .legal blockquote { border-left: 3px solid var(--color-line); padding-left: 1rem; }

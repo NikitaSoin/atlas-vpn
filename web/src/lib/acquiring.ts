@@ -18,6 +18,14 @@
 const API = "https://api.yookassa.ru/v3";
 const TIMEOUT_MS = () => Number(process.env.YOOKASSA_TIMEOUT ?? 20) * 1000;
 
+/**
+ * 🔴 Приём оплаты выключен 14.09.2026 по решению владельца: официально сервис
+ * не работает. Флаг закрывает создание платежей и форму оплаты; код ЮKassa
+ * оставлен, чтобы включить обратно одной правкой. Вебхук продолжает работать:
+ * возвраты по старым платежам должны обрабатываться и при выключенном приёме.
+ */
+export const PAYMENTS_ENABLED = false;
+
 export const shopId = () => (process.env.YOOKASSA_SHOP_ID ?? "").trim();
 export const secretKey = () => (process.env.YOOKASSA_SECRET_KEY ?? "").trim();
 

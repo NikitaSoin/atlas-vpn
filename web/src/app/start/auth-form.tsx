@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { MIN_PASSWORD_LENGTH } from "@/lib/password-rules";
 
@@ -10,9 +9,8 @@ const input =
 /**
  * Вход, регистрация и восстановление пароля одной формой.
  *
- * Галочки согласий показываются только при регистрации и не отмечены заранее:
- * с 01.09.2025 ст. 16 ЗоЗПП запрещает автоматические механики согласия. Всё,
- * что проверяется здесь, проверяется и на сервере — браузеру доверять нельзя.
+ * Галочек согласий нет с 14.09.2026: юридические документы убраны с сайта по
+ * решению владельца, соглашаться стало не с чем.
  */
 export default function AuthForm({
   mode,
@@ -25,11 +23,7 @@ export default function AuthForm({
       после подтверждения почты, чтобы не спрашивать выбор второй раз. */
   trial?: boolean;
 }) {
-  const [terms, setTerms] = useState(false);
-  const [privacy, setPrivacy] = useState(false);
   const [sending, setSending] = useState(false);
-  const needConsent = mode === "signup";
-  const ready = !needConsent || (terms && privacy);
   const action = mode === "login" ? "/api/login" : "/api/signup";
   const label =
     mode === "login" ? "Войти" : mode === "reset" ? "Прислать код" : "Получить код";
@@ -39,7 +33,7 @@ export default function AuthForm({
       action={action}
       method="POST"
       onSubmit={(e) => {
-        if (sending || !ready) e.preventDefault();
+        if (sending) e.preventDefault();
         else setSending(true);
       }}
       className="mt-6 space-y-4 rounded-2xl border border-line bg-surface p-6"
@@ -90,60 +84,13 @@ export default function AuthForm({
         </label>
       )}
 
-      {needConsent && (
-        <div className="space-y-3 border-t border-line/70 pt-4">
-          <label className="flex items-start gap-2.5 text-sm text-muted">
-            <input
-              type="checkbox"
-              name="acceptTerms"
-              checked={terms}
-              onChange={(e) => setTerms(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-            />
-            <span>
-              Я принимаю{" "}
-              <Link href="/legal/offer" target="_blank" className="text-accent-ink hover:underline">
-                публичную оферту
-              </Link>{" "}
-              и{" "}
-              <Link href="/legal/rules" target="_blank" className="text-accent-ink hover:underline">
-                правила использования
-              </Link>
-              .
-            </span>
-          </label>
-
-          <label className="flex items-start gap-2.5 text-sm text-muted">
-            <input
-              type="checkbox"
-              name="acceptPrivacy"
-              checked={privacy}
-              onChange={(e) => setPrivacy(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-            />
-            <span>
-              Я согласен на обработку персональных данных на условиях{" "}
-              <Link href="/legal/privacy" target="_blank" className="text-accent-ink hover:underline">
-                политики обработки персональных данных
-              </Link>
-              .
-            </span>
-          </label>
-        </div>
-      )}
-
       <button
         type="submit"
-        disabled={!ready || sending}
+        disabled={sending}
         className="w-full rounded-xl bg-primary px-4 py-3 font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100"
       >
         {sending ? "Секунду…" : label}
       </button>
-      {needConsent && !ready && (
-        <p className="text-center text-xs text-muted">
-          Отметьте оба пункта, чтобы продолжить.
-        </p>
-      )}
     </form>
   );
 }

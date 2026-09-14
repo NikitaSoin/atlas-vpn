@@ -21,7 +21,7 @@ async function deliver(sub: SubRecord, subject: string, text: string): Promise<b
 export function messageFor(sub: SubRecord, kind: ReminderKind | "trial" | "paid" | "refunded") {
   const site = siteUrl();
   const setup = `${site}/setup/${sub.token}`;
-  const renew = `${site}/checkout?email=${encodeURIComponent(sub.email)}`;
+  const renew = `${site}/plans`;
   const until = formatDateTime(sub.expiresAt);
   switch (kind) {
     case "trial":

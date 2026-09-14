@@ -3,7 +3,7 @@ import { Golos_Text } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { brand, companyFilled, getCompany } from "@/lib/brand";
+import { brand } from "@/lib/brand";
 import { currentSub } from "@/lib/session";
 import { viaOurVpn } from "@/lib/site";
 import { subState, timeLeft } from "@/lib/subscription";
@@ -28,7 +28,6 @@ export default async function RootLayout({
   const state = sub ? subState(sub) : null;
   const left = sub ? timeLeft(sub) : null;
   const viaVpn = viaOurVpn(hdrs);
-  const company = getCompany();
   // На узком экране в шапке помещается только короткая подпись.
   const cabinetLabel =
     sub && state && left
@@ -90,49 +89,20 @@ export default async function RootLayout({
               <span>
                 © {new Date().getFullYear()} {brand.name} — {brand.tagline.toLowerCase()}
               </span>
+              {/*
+                14.09.2026: оферта, правила, политика, «оплата и возврат»,
+                контакты и реквизиты исполнителя убраны по решению владельца —
+                официально сервис не работает. В подвале осталась поддержка.
+              */}
               <nav className="flex flex-wrap gap-x-4 gap-y-1">
-                <Link href="/legal/offer" className="hover:text-fg">
-                  Оферта
-                </Link>
-                <Link href="/legal/rules" className="hover:text-fg">
-                  Правила использования
-                </Link>
-                <Link href="/legal/privacy" className="hover:text-fg">
-                  Обработка данных
-                </Link>
-                <Link href="/terms" className="hover:text-fg">
-                  Оплата и возврат
-                </Link>
-                <Link href="/contacts" className="hover:text-fg">
-                  Контакты
-                </Link>
                 <Link href="/support" className="hover:text-fg">
                   Поддержка
                 </Link>
+                <a href={brand.supportTelegram} target="_blank" rel="noreferrer" className="hover:text-fg">
+                  Telegram
+                </a>
               </nav>
             </div>
-            {/* Сведения об исполнителе — требование ст. 9 ЗоЗПП. */}
-            <p className="mt-4 border-t border-line/60 pt-4 text-xs leading-relaxed">
-              {companyFilled(company) ? (
-                <>
-                  {/* Адрес регистрации в подвале не показываем: для ИП
-                      ст. 9 ЗоЗПП требует ФИО и сведения о госрегистрации,
-                      а адрес — это домашний адрес предпринимателя. Полные
-                      реквизиты есть в оферте. */}
-                  {company.form} {company.name}
-                  {company.ogrnip && <> · ОГРНИП {company.ogrnip}</>}
-                  {company.inn && <> · ИНН {company.inn}</>}
-                  {company.email && <> · {company.email}</>}
-                  {company.phone && <> · {company.phone}</>}
-                </>
-              ) : (
-                <span className="text-amber-700">
-                  Реквизиты исполнителя не заданы: до публичного запуска заполните
-                  переменные COMPANY_* — без них сайт не соответствует ст. 9 Закона
-                  «О защите прав потребителей».
-                </span>
-              )}
-            </p>
           </div>
         </footer>
       </body>

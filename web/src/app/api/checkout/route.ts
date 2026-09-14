@@ -7,7 +7,7 @@ import { REF_COOKIE, setSession } from "@/lib/session";
 import { applyPayment, grantReferralBonus } from "@/lib/subscription";
 import { notify, notifyReferralBonus } from "@/lib/notify";
 import { track } from "@/lib/analytics";
-import { acquiringConfigured, initPayment } from "@/lib/acquiring";
+import { acquiringConfigured, initPayment, PAYMENTS_ENABLED } from "@/lib/acquiring";
 import { brand } from "@/lib/brand";
 
 /**
@@ -24,6 +24,12 @@ import { brand } from "@/lib/brand";
  * приходит лишь его название. Одноразовый ключ формы гасит двойной клик.
  */
 export async function POST(req: NextRequest) {
+  // Приём оплаты выключен (см. PAYMENTS_ENABLED): платежи не создаём и доступ
+  // не выдаём, человека возвращаем на тарифы с объяснением.
+  if (!PAYMENTS_ENABLED) {
+    await track(req.headers, "checkout_unavailable");
+    return NextResponse.redirect(absoluteUrl(req, "/plans"), { status: 303 });
+  }
   const form = await req.formData();
   const planId = String(form.get("plan") ?? "");
   const email = String(form.get("email") ?? "").trim().toLowerCase();

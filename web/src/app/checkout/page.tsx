@@ -4,9 +4,8 @@ import { findPlan, plans } from "@/lib/plans";
 import { brand } from "@/lib/brand";
 import { currentSub } from "@/lib/session";
 import { getStore } from "@/lib/db";
-import { acquiringConfigured, acquiringDemo } from "@/lib/acquiring";
+import { acquiringConfigured, acquiringDemo, PAYMENTS_ENABLED } from "@/lib/acquiring";
 import CheckoutForm from "./checkout-form";
-import PaymentMethods from "../payment-methods";
 
 /** Ключ формы живёт достаточно, чтобы человек успел подумать. */
 const NONCE_TTL_MIN = 60;
@@ -21,6 +20,31 @@ export default async function CheckoutPage({
   const { plan: planId, email: emailParam, err } = await searchParams;
   const plan = findPlan(planId ?? "") ?? plans.find((p) => p.popular);
   if (!plan) notFound();
+
+  // Приём оплаты выключен: страница остаётся ради старых ссылок из писем,
+  // но вместо формы объясняет, как получить доступ.
+  if (!PAYMENTS_ENABLED) {
+    return (
+      <main className="mx-auto max-w-md px-5 py-16">
+        <Link href="/plans" className="text-sm text-muted hover:text-fg">
+          ← К тарифам
+        </Link>
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">Оплата на сайте отключена</h1>
+        <p className="mt-2 leading-relaxed text-muted">
+          Чтобы подключить или продлить доступ, напишите нам в Telegram — сделаем вручную.
+          Ссылка и настройки в приложении останутся прежними.
+        </p>
+        <a
+          href={brand.supportTelegram}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-6 inline-block rounded-xl bg-primary px-5 py-3 font-medium text-white transition hover:brightness-110"
+        >
+          Написать в Telegram
+        </a>
+      </main>
+    );
+  }
 
   // Почту берём из кабинета, если человек уже вошёл в этом браузере.
   const sub = await currentSub();
@@ -117,10 +141,6 @@ export default async function CheckoutPage({
           Настраивать заново ничего не нужно.
         </p>
       </div>
-      <div className="mt-6">
-        <PaymentMethods />
-      </div>
-
     </main>
   );
 }
