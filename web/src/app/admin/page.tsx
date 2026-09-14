@@ -294,6 +294,10 @@ export default async function AdminPage({
                         {!s.panelToken && s.planId !== "none" && (
                           <span className="ml-1 text-amber-700">· без доступа в панели</span>
                         )}
+                        {/* Аккаунт без пароля не может войти: только «восстановить пароль». */}
+                        {!s.passwordHash && (
+                          <span className="ml-1 text-amber-700">· без пароля</span>
+                        )}
                       </td>
                       <td className="py-1.5">{free ? "∞" : formatDate(s.expiresAt)}</td>
                       <td className="py-1.5">{s.telegramChatId ? "✓" : ""}</td>
